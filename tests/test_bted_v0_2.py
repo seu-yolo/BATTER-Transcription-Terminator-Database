@@ -274,6 +274,39 @@ class TestBtedV020Release(unittest.TestCase):
             result = subprocess.run(command, cwd=REPO_ROOT, text=True, capture_output=True, check=False)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_static_assemblies_json_powers_accession_search(self) -> None:
+        assemblies = json.loads((REPO_ROOT / "site/data/assemblies.json").read_text(encoding="utf-8"))
+        self.assertEqual(assemblies["release_version"], "v0.2.0")
+        self.assertEqual(len(assemblies["assemblies"]), 20)
+        pilot = assemblies["assemblies"]["GCF_000739105.1"]
+        self.assertEqual(pilot["record_count"], 2_848)
+        self.assertEqual(len(pilot["tracks"]), 2)
+        self.assertEqual(
+            [track["source_id"] for track in pilot["tracks"]],
+            ["BATTER_S1_007", "BATTER_S1_013"],
+        )
+        self.assertEqual(
+            [track["evidence_class"] for track in pilot["tracks"]],
+            ["author_called_endpoint", "author_called_endpoint"],
+        )
+        self.assertTrue(all(
+            track["track_status"] in ("signal_endpoints", "endpoints_only", "metadata_only")
+            for assembly in assemblies["assemblies"].values()
+            for track in assembly["tracks"]
+        ))
+        audit_only = next(
+            assembly for assembly in assemblies["assemblies"].values()
+            if any(track["source_id"] == "BATTER_S1_002" for track in assembly["tracks"])
+        )
+        self.assertIsNone(audit_only["jbrowse_config_url"])
+        self.assertEqual(audit_only["tracks"][0]["track_status"], "metadata_only")
+        # GitHub Pages: paths must be relative, never localhost or /api/assemblies
+        demo_js = (REPO_ROOT / "site/assets/accession-range-demo.js").read_text(encoding="utf-8")
+        self.assertNotIn("/api/assemblies", demo_js)
+        self.assertNotIn("127.0.0.1", demo_js)
+        self.assertNotIn("localhost", demo_js)
+        self.assertIn("data/assemblies.json", demo_js)
+
 
 if __name__ == "__main__":
     unittest.main()

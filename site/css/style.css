@@ -462,3 +462,8 @@ main.page-shell { padding-top: 34px; padding-bottom: 60px; min-height: calc(100v
   .data-list dt { border-bottom: 0; padding-bottom: 0; }
   .footer-inner { padding: 18px 0; align-items: flex-start; flex-direction: column; }
 }
+.source-dataset-card header { position: relative; }
+.source-status-badge { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.source-status-badge.status-signal_endpoints { color: var(--green); background: var(--green-bg); }
+.source-status-badge.status-endpoints_only { color: #4b5563; background: #f3f4f6; }
+.source-status-badge.status-metadata_only { color: var(--amber); background: var(--amber-bg); }

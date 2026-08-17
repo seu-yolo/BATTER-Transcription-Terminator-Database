@@ -11,6 +11,8 @@
   const languageButtons = Array.from(document.querySelectorAll("[data-language-choice]"));
   let currentPayload = null;
   let currentLanguage = "en";
+  let assemblyCatalog = null;
+  let assemblyCatalogPromise = null;
 
   const messages = {
     en: {
@@ -78,6 +80,16 @@
     return labels[value] ? message(labels[value]) : value.replaceAll("_", " ");
   }
 
+  function trackStatusLabel(status) {
+    const labels = {
+      signal_endpoints: { en: "Signal + endpoints", zh: "信号 + 端点" },
+      endpoints_only: { en: "Endpoints only", zh: "仅端点" },
+      metadata_only: { en: "Metadata only", zh: "仅元数据" },
+    };
+    const label = labels[status] || { en: status, zh: status };
+    return label[currentLanguage];
+  }
+
   function addFact(list, label, value) {
     const item = document.createElement("div");
     const term = document.createElement("dt");
@@ -116,6 +128,13 @@
       const title = document.createElement("h3");
       title.textContent = track.paper_title || track.name;
       header.append(meta, title);
+
+      if (track.track_status) {
+        const badge = document.createElement("span");
+        badge.className = `source-status-badge status-${track.track_status}`;
+        badge.textContent = trackStatusLabel(track.track_status);
+        header.append(badge);
+      }
 
       const facts = document.createElement("dl");
       facts.className = "source-card-facts";
@@ -163,14 +182,30 @@
     renderSourceCards(payload.tracks);
     renderInterpretations(payload.tracks);
 
-    root.querySelector("[data-edge-jbrowse]").href =
-      `jbrowse/index.html?config=${encodeURIComponent(payload.jbrowse_config_url)}`;
+    const jbrowseButton = root.querySelector("[data-edge-jbrowse]");
+    if (payload.jbrowse_config_url) {
+      jbrowseButton.href = `jbrowse/index.html?config=${encodeURIComponent(payload.jbrowse_config_url)}`;
+      jbrowseButton.classList.remove("disabled");
+      jbrowseButton.removeAttribute("aria-disabled");
+    } else {
+      jbrowseButton.href = "#";
+      jbrowseButton.classList.add("disabled");
+      jbrowseButton.setAttribute("aria-disabled", "true");
+    }
     root.querySelector("[data-edge-assembly-page]").href =
       `assemblies/${encodeURIComponent(payload.assembly.accession)}.html`;
-    root.querySelector("[data-edge-bed]").href =
-      `downloads/assemblies/${encodeURIComponent(payload.assembly.accession)}/endpoints.bed`;
-    root.querySelector("[data-edge-metadata]").href =
-      `downloads/assemblies/${encodeURIComponent(payload.assembly.accession)}/metadata.json`;
+
+    const bedButton = root.querySelector("[data-edge-bed]");
+    if (payload.bed_url) {
+      bedButton.href = payload.bed_url;
+      bedButton.classList.remove("disabled");
+      bedButton.removeAttribute("aria-disabled");
+    } else {
+      bedButton.href = "#";
+      bedButton.classList.add("disabled");
+      bedButton.setAttribute("aria-disabled", "true");
+    }
+    root.querySelector("[data-edge-metadata]").href = payload.metadata_url;
     results.hidden = false;
   }
 
@@ -199,16 +234,29 @@
     }
   }
 
+  async function loadAssemblyCatalog() {
+    if (assemblyCatalog) return assemblyCatalog;
+    if (assemblyCatalogPromise) return assemblyCatalogPromise;
+    assemblyCatalogPromise = fetch("data/assemblies.json", { headers: { Accept: "application/json" } })
+      .then((response) => {
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        return response.json();
+      })
+      .then((catalog) => {
+        assemblyCatalog = catalog.assemblies || {};
+        return assemblyCatalog;
+      });
+    return assemblyCatalogPromise;
+  }
+
   async function resolveAccession(accession) {
     status.className = "edge-query-status loading";
     status.textContent = message("loading", { accession });
     results.hidden = true;
     try {
-      const response = await fetch(`api/assemblies/${encodeURIComponent(accession)}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-      const payload = await response.json();
+      const catalog = await loadAssemblyCatalog();
+      const payload = catalog[accession];
+      if (!payload) throw new Error("Assembly not found in static catalog");
       render(payload);
       status.className = "edge-query-status success";
       status.textContent = message("found", {

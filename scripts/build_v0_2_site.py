@@ -278,6 +278,121 @@ def assembly_page(assembly: str, records: list[dict[str, object]]) -> str:
     return page(f"{assembly} · genome", "sources", content, depth=1)
 
 
+
+# Static accession-page payload: lets the accession demo run on GitHub Pages
+# without calling a local Python API.
+
+JBROWSE_OVERLAYS = REPO_ROOT / "data/public/v0.2.0/jbrowse-config-overlays"
+
+TRACK_STATUS_LABELS = {
+    "signal_endpoints": ("Signal + endpoints", "信号 + 端点"),
+    "endpoints_only": ("Endpoints only", "仅端点"),
+    "metadata_only": ("Metadata only", "仅元数据"),
+}
+
+def source_has_signal_tracks(source_id: str) -> bool:
+    """Return True if the source JBrowse overlay exposes BigWig signal tracks."""
+    path = JBROWSE_OVERLAYS / f"{source_id}.config.json"
+    if not path.is_file():
+        return False
+    config = json.loads(path.read_text(encoding="utf-8"))
+    for track in config.get("tracks", []):
+        adapter = track.get("adapter", {})
+        if adapter.get("type") in ("BigWigAdapter", "MultiQuantitativeTrack"):
+            return True
+        if "bigWigLocation" in adapter:
+            return True
+        if adapter.get("type") == "MultiQuantitativeTrack":
+            return True
+        for sub in adapter.get("subadapters", []):
+            if "bigWigLocation" in sub:
+                return True
+    return False
+
+
+def reference_name_from_config(path: Path) -> str | None:
+    """Extract the first reference sequence name from a JBrowse config file."""
+    if not path.is_file():
+        return None
+    config = json.loads(path.read_text(encoding="utf-8"))
+    for view in config.get("defaultSession", {}).get("views", []):
+        regions = view.get("displayedRegions", [])
+        if regions:
+            return str(regions[0].get("refName", ""))
+    return None
+
+
+def track_status(record: dict[str, object]) -> str:
+    """Classify the source track for the static accession page."""
+    if record["release_status"] == "audit_only":
+        return "metadata_only"
+    if record["has_jbrowse"] and source_has_signal_tracks(str(record["source_id"])):
+        return "signal_endpoints"
+    return "endpoints_only"
+
+def build_assemblies_json(grouped: dict[str, list[dict[str, object]]]) -> dict[str, object]:
+    assembly_payloads: list[dict[str, object]] = []
+    for assembly, group in grouped.items():
+        published = [record for record in group if record["release_status"] != "audit_only"]
+        browser_config = assembly_browser_config(assembly, group)
+        assembly_config_path = JBROWSE_OVERLAYS / "assemblies" / f"{assembly}.config.json"
+        track_records: list[dict[str, object]] = []
+        for record in group:
+            source = record["source"]
+            manifest = record["manifest"]
+            status = track_status(record)
+            label_en, label_zh = TRACK_STATUS_LABELS[status]
+            track_records.append({
+                "source_id": record["source_id"],
+                "name": f"{source['paper_title']} ({record['source_id']})",
+                "paper_title": source["paper_title"],
+                "publication_year": record["year"],
+                "pmid": source["pmid"],
+                "publication_url": str(manifest.get("pubmed_url", "")),
+                "assay": source["assay_family"],
+                "raw_data_accession": str(source["raw_data_accessions"]),
+                "raw_data_url": str(manifest.get("raw_data_url", "")),
+                "evidence_class": record["evidence_class"],
+                "record_count": record["record_count"],
+                "record_url": f"records/{record['source_id']}.html",
+                "track_status": status,
+                "track_status_label_en": label_en,
+                "track_status_label_zh": label_zh,
+                "interpretation_note": str(manifest.get("known_limitations", source["blocker_or_note"])),
+                "interpretation_note_zh": "",
+            })
+        reference_name = reference_name_from_config(assembly_config_path)
+        if reference_name is None:
+            for record in group:
+                source_config = JBROWSE_OVERLAYS / f"{record['source_id']}.config.json"
+                reference_name = reference_name_from_config(source_config)
+                if reference_name:
+                    break
+        organism_names = sorted({str(record["source"]["species"]) for record in group})
+        payload: dict[str, object] = {
+            "schema_version": "1.0",
+            "delivery_mode": "static_json_assembly_lookup",
+            "assembly": {
+                "accession": assembly,
+                "display_name": f"BTED {assembly}",
+                "scientific_name": organism_names[0] if organism_names else "",
+                "strain": "",
+                "reference_name": reference_name or "",
+            },
+            "record_count": sum(int(record["record_count"]) for record in group),
+            "tracks": track_records,
+            "jbrowse_config_url": browser_config,
+            "assembly_page_url": f"assemblies/{assembly}.html",
+            "bed_url": f"downloads/assemblies/{assembly}/endpoints.bed" if published else None,
+            "metadata_url": f"downloads/assemblies/{assembly}/metadata.json",
+        }
+        assembly_payloads.append(payload)
+    assembly_payloads.sort(key=lambda item: str(item["assembly"]["accession"]))
+    return {
+        "release_version": "v0.2.0",
+        "assemblies": {str(payload["assembly"]["accession"]): payload for payload in assembly_payloads},
+    }
+
 def main() -> int:
     release = json.loads(RELEASE_PATH.read_text(encoding="utf-8"))
     with REGISTRY_PATH.open(encoding="utf-8", newline="") as handle:
@@ -348,6 +463,11 @@ def main() -> int:
     (SITE_ROOT / "data/catalog.json").write_text(json.dumps({
         "release_version": "v0.2.0", "language": "en", "sources": catalog_sources, "assemblies": catalog_assemblies,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    (SITE_ROOT / "data/assemblies.json").write_text(
+        json.dumps(build_assemblies_json(grouped), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     index_content = f"""
 <main><section class="hero"><div class="page-shell hero-inner"><p class="eyebrow">BTED v0.2.0</p><h1>{bi('Explore bacterial transcript 3′ ends by genome.', '按基因组浏览细菌转录 3′ 端数据。')}</h1><p>{bi('Public experimental datasets are organized by exact reference assembly, with each study retained as an independent track.', '公开实验数据按完全一致的参考组装整理，每项研究保留为独立 track。')}</p><div class="hero-actions"><a class="button primary" href="sources.html">{bi('Browse genomes', '浏览基因组')}</a><a class="button" href="catalog.html">{bi('Download data', '下载数据')}</a></div></div></section>
