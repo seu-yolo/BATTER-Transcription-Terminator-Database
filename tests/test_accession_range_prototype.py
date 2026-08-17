@@ -41,7 +41,6 @@ class TestAccessionRangePrototype(unittest.TestCase):
         self.assertEqual(len(assembly["tracks"]), 2)
         self.assertEqual(assembly["scientific_name"], "Streptomyces lividans")
         self.assertEqual(assembly["strain"], "TK24")
-        self.assertIn("shared raw-data project", assembly["source_relationship_note"])
         self.assertEqual(
             [track["publication_year"] for track in assembly["tracks"]],
             [2019, 2020],
@@ -53,9 +52,6 @@ class TestAccessionRangePrototype(unittest.TestCase):
         )
         self.assertTrue(all(track["publication_url"].startswith("https://pubmed.ncbi.nlm.nih.gov/") for track in assembly["tracks"]))
         self.assertTrue(all(track["interpretation_note"] and track["interpretation_note_zh"] for track in assembly["tracks"]))
-        self.assertTrue(all(track["study_context"]["lead_institution"] == "Korea Advanced Institute of Science and Technology (KAIST)" for track in assembly["tracks"]))
-        self.assertTrue(all(track["study_context"]["ena_submitting_center"] == "KAIST" for track in assembly["tracks"]))
-        self.assertTrue(all(track["study_context"]["sequencing_facility"] == "Not separately reported" for track in assembly["tracks"]))
         self.assertTrue(all(
             len(REGISTRY["assets"][asset_key].get("equivalent_source_assets", [])) == 2
             for asset_key in assembly["reference_assets"].values()
@@ -82,7 +78,6 @@ class TestAccessionRangePrototype(unittest.TestCase):
             ["BATTER_S1_007", "BATTER_S1_013"],
         )
         self.assertEqual(payload["assembly"]["scientific_name"], "Streptomyces lividans")
-        self.assertEqual(payload["tracks"][0]["study_context"]["sequencing_platform"], "Illumina HiSeq 2500")
         serialized = json.dumps(config)
         self.assertNotIn("huggingface.co", serialized)
         self.assertNotIn("../assets/", serialized)
@@ -106,11 +101,14 @@ class TestAccessionRangePrototype(unittest.TestCase):
         self.assertIn("查找转录本 3′ 端数据集", page)
         self.assertIn('data-language-choice="en"', page)
         self.assertIn('data-language-choice="zh"', page)
-        self.assertIn("Who generated the data, and how?", page)
-        self.assertIn("数据由谁产生，如何测量？", page)
-        self.assertIn("Shared raw-data project", page)
-        self.assertIn("Lead institution", script)
-        self.assertIn("主要研究单位", script)
+        self.assertIn("Publications and experimental data", page)
+        self.assertIn("论文与实验数据", page)
+        self.assertIn("Raw-data accession", script)
+        self.assertIn("原始数据登录号", script)
+        self.assertNotIn("Who generated the data, and how?", page)
+        self.assertNotIn("数据由谁产生，如何测量？", page)
+        self.assertNotIn("Lead institution", script)
+        self.assertNotIn("主要研究单位", script)
         self.assertNotIn("What does one record mean?", page)
         self.assertNotIn("Suitable uses", page)
         self.assertNotIn("D1-compatible registry", page)

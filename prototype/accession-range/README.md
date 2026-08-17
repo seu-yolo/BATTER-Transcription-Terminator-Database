@@ -25,7 +25,6 @@ The two existing release copies of FASTA, FAI, gene GFF3 and TBI are byte-identi
 ## Files
 
 - `registry.json`: checksum-frozen local object map used by the demo server;
-- `STUDY_CONTEXT.md`: provenance for the institution, experiment and shared-project fields shown to users;
 - `schema.sql`: proposed Cloudflare D1 schema;
 - `seed.sql`: one-assembly pilot rows;
 - `src/worker.js`: production-shaped Worker routes;
@@ -44,7 +43,7 @@ python3 scripts/stage_pages.py \
 python3 scripts/run_accession_range_demo.py --port 8016
 ```
 
-Open `http://127.0.0.1:8016/accession-range-demo.html`. The bilingual user page searches by assembly accession and leads with the organism, reference genome, research institution, laboratory, culture and sampling design, sequencing details, publication and raw-data project. Endpoint definitions and limitations remain available in a secondary disclosure. D1, API routes, object paths, and Range diagnostics are intentionally kept out of the public-facing interface; the tests below verify those implementation details directly.
+Open `http://127.0.0.1:8016/accession-range-demo.html`. The bilingual user page searches by assembly accession and shows the already curated core fields: organism, strain, assembly, publication, assay, raw-data accession and evidence class. Endpoint definitions and limitations remain available in a secondary disclosure. D1, API routes, object paths, and Range diagnostics are intentionally kept out of the public-facing interface; the tests below verify those implementation details directly.
 
 The local object backend is intentional. It demonstrates and tests the browser/API contract without publishing data to an external service or requiring Cloudflare credentials.
 

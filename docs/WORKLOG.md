@@ -1,5 +1,21 @@
 # 工作日志
 
+## 2026-08-17 —— accession 页面收敛为既有核心字段
+
+**分支：** `feature/research-user-dataset-context-v0.1`
+**范围：** 根据用户反馈简化试点页面；没有修改端点坐标、BED、证据类别或记录数。
+
+### 完成内容
+
+1. 移除“数据由谁产生，如何测量？”以及研究单位、实验室、通讯作者、培养、采样、测序平台和测序机构等扩展字段。
+2. 页面只使用此前已整理的核心字段：物种、菌株、assembly/contig、论文、实验方法、原始数据 accession 和证据类型；同时保留记录数、下载和 JBrowse 操作入口。
+3. 来源区改为 `Publications and experimental data / 论文与实验数据`，每个来源继续作为独立 track，不合并端点表。
+4. D1 试点仅为物种和菌株增加结构化列，其余论文、assay、accession 和 evidence 字段沿用现有 registry。
+
+### 结论
+
+现有 22 个来源已经足以生成该核心信息界面，不需要为了网页重新逐篇整理机构与详细实验条件。S1_002 继续保持 `audit_only`。
+
 ## 2026-08-17 —— accession 页面科研背景信息试版
 
 **分支：** `feature/research-user-dataset-context-v0.1`

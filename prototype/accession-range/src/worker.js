@@ -21,7 +21,7 @@ function objectUrl(request, assetKey) {
 
 async function findAssembly(env, accession) {
   return env.BTED_DB.prepare(
-    "SELECT accession, display_name, scientific_name, strain, reference_name, reference_length, replicon_count, source_relationship_note, source_relationship_note_zh, release_version, status FROM assemblies WHERE accession = ?",
+    "SELECT accession, display_name, scientific_name, strain, reference_name, reference_length, release_version, status FROM assemblies WHERE accession = ?",
   ).bind(accession).first();
 }
 
@@ -34,7 +34,7 @@ async function findAssets(env, accession) {
 
 async function findTracks(env, accession) {
   const result = await env.BTED_DB.prepare(
-    "SELECT track_id, source_id, publication_year, pmid, record_url, paper_title, publication_url, raw_data_accession, raw_data_url, interpretation_note, interpretation_note_zh, study_context_json, name, assay, evidence_class, record_count, asset_key, display_order FROM tracks WHERE assembly_accession = ? ORDER BY display_order",
+    "SELECT track_id, source_id, publication_year, pmid, record_url, paper_title, publication_url, raw_data_accession, raw_data_url, interpretation_note, interpretation_note_zh, name, assay, evidence_class, record_count, asset_key, display_order FROM tracks WHERE assembly_accession = ? ORDER BY display_order",
   ).bind(accession).all();
   return result.results || [];
 }
@@ -56,14 +56,10 @@ async function assemblyPayload(request, env, accession) {
       ...asset,
       range_url: objectUrl(request, asset.asset_key),
     })),
-    tracks: tracks.map((track) => {
-      const { study_context_json: contextJson, ...values } = track;
-      return {
-        ...values,
-        study_context: JSON.parse(contextJson),
-        range_url: objectUrl(request, track.asset_key),
-      };
-    }),
+    tracks: tracks.map((track) => ({
+      ...track,
+      range_url: objectUrl(request, track.asset_key),
+    })),
     jbrowse_config_url: new URL(
       `/api/assemblies/${encodeURIComponent(accession)}/jbrowse-config`,
       request.url,

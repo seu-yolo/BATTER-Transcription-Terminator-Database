@@ -7,9 +7,6 @@ CREATE TABLE assemblies (
   strain TEXT NOT NULL,
   reference_name TEXT NOT NULL,
   reference_length INTEGER NOT NULL CHECK (reference_length > 0),
-  replicon_count INTEGER NOT NULL CHECK (replicon_count > 0),
-  source_relationship_note TEXT NOT NULL,
-  source_relationship_note_zh TEXT NOT NULL,
   release_version TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('pilot', 'published', 'withdrawn'))
 );
@@ -40,7 +37,6 @@ CREATE TABLE tracks (
   raw_data_url TEXT,
   interpretation_note TEXT NOT NULL,
   interpretation_note_zh TEXT NOT NULL,
-  study_context_json TEXT NOT NULL,
   name TEXT NOT NULL,
   assay TEXT NOT NULL,
   evidence_class TEXT NOT NULL,

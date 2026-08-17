@@ -19,16 +19,10 @@
       loading: "Searching for {accession}…",
       found: "Found {sources} source datasets and {records} transcript 3′-end records.",
       error: "No data were found for this accession. Check the accession and try again.",
-      institution: "Lead institution",
-      laboratory: "Laboratory / department",
-      correspondingAuthor: "Corresponding author",
-      culture: "Culture",
-      sampling: "Sampling",
-      sequencing: "Sequencing",
-      replicates: "Biological replicates",
-      submitter: "ENA submitting center",
-      facility: "Sequencing facility",
-      endpointSet: "Endpoint set",
+      assay: "Assay",
+      evidence: "Evidence",
+      accession: "Raw-data accession",
+      records: "Records",
       publication: "Publication",
       rawData: "Raw sequencing",
       details: "Dataset record",
@@ -42,22 +36,16 @@
       loading: "正在检索 {accession}…",
       found: "已找到 {sources} 个来源数据集和 {records} 条转录本 3′ 端记录。",
       error: "未找到该登录号对应的数据，请检查后重试。",
-      institution: "主要研究单位",
-      laboratory: "实验室 / 院系",
-      correspondingAuthor: "通讯作者",
-      culture: "培养条件",
-      sampling: "采样设计",
-      sequencing: "测序信息",
-      replicates: "生物学重复",
-      submitter: "ENA 提交中心",
-      facility: "测序机构",
-      endpointSet: "端点数据",
+      assay: "实验方法",
+      evidence: "证据类型",
+      accession: "原始数据登录号",
+      records: "记录数",
       publication: "论文",
       rawData: "原始测序",
       details: "数据集详情",
-      authorEndpoint: "个作者定义端点",
-      curatedRecord: "条文献整理记录",
-      auditOnly: "条元数据记录",
+      authorEndpoint: "作者定义端点",
+      curatedRecord: "文献整理记录",
+      auditOnly: "仅元数据",
     },
   };
 
@@ -75,19 +63,6 @@
 
   function formatNumber(value) {
     return Number(value).toLocaleString(locale());
-  }
-
-  function formatGenomeSize(value) {
-    return `${(Number(value) / 1_000_000).toLocaleString(locale(), {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })} Mb`;
-  }
-
-  function localized(object, key) {
-    if (!object) return "—";
-    if (currentLanguage === "zh" && object[`${key}_zh`]) return object[`${key}_zh`];
-    return object[key] || "—";
   }
 
   function setText(selector, value) {
@@ -125,50 +100,29 @@
     return link;
   }
 
-  function renderStudyCards(tracks) {
+  function renderSourceCards(tracks) {
     const list = root.querySelector("[data-edge-study-cards]");
     list.replaceChildren();
     tracks.forEach((track) => {
-      const context = track.study_context || {};
       const card = document.createElement("article");
-      card.className = "study-context-card";
+      card.className = "source-dataset-card";
 
       const header = document.createElement("header");
       const meta = document.createElement("div");
-      meta.className = "study-card-meta";
-      const role = document.createElement("span");
-      role.className = "study-role";
-      role.textContent = localized(context, "source_role");
+      meta.className = "source-card-meta";
       const identity = document.createElement("span");
       identity.textContent = `${track.source_id} · ${track.publication_year}`;
-      meta.append(role, identity);
+      meta.append(identity);
       const title = document.createElement("h3");
       title.textContent = track.paper_title || track.name;
-      const relationship = document.createElement("p");
-      relationship.textContent = localized(context, "data_relationship");
-      header.append(meta, title, relationship);
-
-      const institution = document.createElement("section");
-      institution.className = "study-institution";
-      const institutionLabel = document.createElement("span");
-      institutionLabel.textContent = message("institution");
-      const institutionName = document.createElement("strong");
-      institutionName.textContent = context.lead_institution || "—";
-      const laboratory = document.createElement("p");
-      laboratory.textContent = context.lead_laboratory || "—";
-      const location = document.createElement("small");
-      location.textContent = `${localized(context, "country")} · ${message("correspondingAuthor")}: ${context.corresponding_author || "—"}`;
-      institution.append(institutionLabel, institutionName, laboratory, location);
+      header.append(meta, title);
 
       const facts = document.createElement("dl");
-      facts.className = "study-facts";
-      addFact(facts, message("culture"), localized(context, "culture_condition"));
-      addFact(facts, message("sampling"), localized(context, "sampling_scheme"));
-      addFact(facts, message("sequencing"), `${context.sequencing_platform || "—"} · ${localized(context, "read_layout")}`);
-      addFact(facts, message("replicates"), formatNumber(context.biological_replicates || 0));
-      addFact(facts, message("submitter"), context.ena_submitting_center || "—");
-      addFact(facts, message("facility"), localized(context, "sequencing_facility"));
-      addFact(facts, message("endpointSet"), `${formatNumber(track.record_count)} ${evidenceLabel(track.evidence_class)}`);
+      facts.className = "source-card-facts";
+      addFact(facts, message("assay"), track.assay);
+      addFact(facts, message("accession"), track.raw_data_accession);
+      addFact(facts, message("evidence"), evidenceLabel(track.evidence_class));
+      addFact(facts, message("records"), formatNumber(track.record_count));
 
       const footer = document.createElement("footer");
       footer.append(
@@ -177,7 +131,7 @@
         actionLink(message("details"), track.record_url || `records/${encodeURIComponent(track.source_id)}.html`),
       );
 
-      card.append(header, institution, facts, footer);
+      card.append(header, facts, footer);
       list.appendChild(card);
     });
   }
@@ -204,17 +158,11 @@
     setText("[data-edge-strain]", payload.assembly.strain || "");
     setText("[data-edge-assembly]", payload.assembly.accession);
     setText("[data-edge-reference]", payload.assembly.reference_name);
-    setText("[data-edge-genome-size]", formatGenomeSize(payload.assembly.reference_length));
-    setText("[data-edge-replicons]", formatNumber(payload.assembly.replicon_count || 1));
     setText("[data-edge-tracks]", formatNumber(payload.tracks.length));
     setText("[data-edge-records]", formatNumber(payload.record_count));
-    setText("[data-edge-relationship]", currentLanguage === "zh"
-      ? payload.assembly.source_relationship_note_zh
-      : payload.assembly.source_relationship_note);
-    renderStudyCards(payload.tracks);
+    renderSourceCards(payload.tracks);
     renderInterpretations(payload.tracks);
 
-    root.querySelector("[data-edge-shared-raw]").href = payload.tracks[0].raw_data_url;
     root.querySelector("[data-edge-jbrowse]").href =
       `jbrowse/index.html?config=${encodeURIComponent(payload.jbrowse_config_url)}`;
     root.querySelector("[data-edge-assembly-page]").href =
