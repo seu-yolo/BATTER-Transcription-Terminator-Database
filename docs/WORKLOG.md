@@ -36,7 +36,46 @@
 ### 未完成 / 需后续关注
 
 - 本地沙箱无法启动普通静态服务器，浏览器 JS 实际渲染和 JBrowse 交互未在本地实测；已通过文件系统路径验证和线上 HTTP 200 检查覆盖。
-- 线上 JBrowse 的 track 实际加载和 peak 显示需人工在浏览器中确认。
+- 线上 JBrowse 的 track 实际加载和 peak 显示已在本日（2026-08-18）通过 Playwright 线上浏览器验证。
+
+## 2026-08-18（续）—— 文档 PR 清理与线上浏览器验收
+
+**分支：** `docs/bted-v0.2-handoff-v2` → `seu-yolo/main`
+**范围：** 清理冲突的 docs PR，完成线上真实浏览器验证；未修改科学数据。
+
+### 完成内容
+
+1. 确认 PR #3（`docs/bted-v0.2-handoff`）因包含已 squash 进 main 的代码提交而处于 `mergeable_state: dirty`。
+2. 从 `personal/main`（`f9b3205`）新建 docs-only 分支 `docs/bted-v0.2-handoff-v2`，仅保留 `docs/WORKLOG.md` 与 `docs/HANDOFF.md` 更新，并推送到个人仓库。
+3. 使用 Playwright 对线上站点进行真实浏览器验证：
+   - 首页标题、导航、统计数字正确（20 assemblies / 22 source tracks / 28,399 records）。
+   - `GCF_000739105.1` 中文 accession 页面显示 2 来源、2,848 记录、两篇论文、PRJEB31507、作者定义端点、BED/metadata 下载。
+   - JBrowse 加载 1 个共享参考 + 2 条独立来源 track（S1_007、S1_013），控制台无 error，网络请求无 404。
+   - `BATTER_S1_002` 页面为 `Metadata only` / `audit_only`，无 JBrowse 入口。
+   - `BATTER_S1_001` Rend-seq 页面保留 BigWig signal track 与候选端点 track。
+4. 本地测试与校验脚本全部 PASS（`test_bted_ingestion.py`、`validate-site.py`、`validate_jbrowse_release.py`、`validate_repo_layout.py`）。
+
+### 阻塞与待人工步骤
+
+- GitHub 连接器仅有只读权限，`gh` CLI token 失效，无法自动创建/合并 PR 或关闭 PR #3。
+- 需人工在浏览器中：关闭 PR #3，创建并合并 `docs/bted-v0.2-handoff-v2` → `main` 的 PR。
+
+### 验证
+
+- Playwright 线上验收：PASS（无 console error、无 404）。
+- `python -m unittest -v tests/test_bted_ingestion.py`：4/4 PASS。
+- `python scripts/validate-site.py site`：PASS。
+- `python scripts/validate-site.py .pages-preview`：PASS。
+- `python scripts/validate_jbrowse_release.py`：PASS。
+- `python scripts/validate_repo_layout.py`：PASS。
+
+### 参考链接
+
+- 线上站点：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/
+- PR #2（已合并）：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/pull/2
+- 冲突 PR #3（待关闭）：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/pull/3
+- 干净 docs 分支比较：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/compare/main...docs/bted-v0.2-handoff-v2
+- Actions 成功部署 run：`32054805656`
 
 
 

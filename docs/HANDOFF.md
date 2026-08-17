@@ -72,3 +72,47 @@ Use this file to transfer work between Kimi, OpenAI, or collaborators. Replace t
    - 建议创建新 Release tag（如 `preview-v0.2.1`）并更新 `.github/workflows/pages.yml` 中的 `RELEASE_TAG`；
    - 不要静默覆盖已发布版本而不记录。
 4. 个人仓库 `main` 已部署；上游 `LIMwhatnameisavailable` 仓库未动，如需同步需单独提 PR。
+
+## Handoff — 2026-08-18（续）—— 文档 PR 清理与线上浏览器验证
+
+### 继续完成的内容
+
+- 处理了 PR #3（`docs/bted-v0.2-handoff` → `main`）的合并冲突：该分支从本地 feature 分支推送，包含已在 PR #2 中 squash 合并的代码提交，导致 `mergeable_state: dirty`。
+- 从当前 `personal/main`（`f9b3205`）新建干净 docs-only 分支 `docs/bted-v0.2-handoff-v2`，仅保留 `docs/WORKLOG.md` 与 `docs/HANDOFF.md` 的更新，并推送到 `seu-yolo/BATTER-Transcription-Terminator-Database`。
+- 线上 Playwright 浏览器验证完成：
+  - 首页：标题 `Home · BTED`，统计 `20 assemblies · 22 source tracks · 28,399 records`。
+  - `accession-range-demo.html?accession=GCF_000739105.1&lang=zh`：中文界面，显示 `Streptomyces lividans TK24`、`CP009124.1`、2 个来源、2,848 条记录；两篇论文 PMID 31555254 / PMID 33319794，原始数据 PRJEB31507，证据类型“作者定义端点”；提供 BED 与 metadata 下载。
+  - JBrowse `assemblies/GCF_000739105.1.config.json`：加载 1 个参考序列 + NCBI gene annotation + `BATTER_S1_007` + `BATTER_S1_013` 共 2 条独立来源 track；控制台无 error，网络请求无 404。
+  - `records/BATTER_S1_002.html`：`Metadata only`、`audit_only`、0 条记录，无 JBrowse 入口，仅提供 metadata 下载。
+  - `records/BATTER_S1_001.html`：Rend-seq、`curated_record`、607 条记录，含 `Signal · blue + above zero · orange − below zero` BigWig 信号 track 入口。
+  - 中英文切换按钮在 accession 页面正常工作。
+- 本地回归测试与校验脚本全部 PASS：
+  - `python -m unittest -v tests/test_bted_ingestion.py`：4/4 PASS。
+  - `python scripts/validate-site.py site` / `.pages-preview`：PASS。
+  - `python scripts/validate_jbrowse_release.py`：PASS。
+  - `python scripts/validate_repo_layout.py`：PASS。
+
+### 当前阻塞
+
+- GitHub 连接器（Codex GitHub app）在本仓库仅有只读权限，`_create_pull_request` / `_merge_pull_request` / `_update_pull_request` 均返回 `403 Resource not accessible by integration`。
+- `gh auth status` 显示 `seu-yolo` token 已失效；`gh auth login` 在沙箱内无法完成浏览器/设备流授权。
+- 因此无法自动创建/合并 `docs/bted-v0.2-handoff-v2` 的 PR，也无法自动关闭冲突的 PR #3。
+
+### 需要人工完成的步骤
+
+1. 在浏览器中登录 GitHub 账号 `seu-yolo` 后访问：
+   - 关闭冲突的 PR #3：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/pull/3
+   - 创建新 PR：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/compare/main...docs/bted-v0.2-handoff-v2
+2. 新 PR 标题建议：`docs: update WORKLOG and HANDOFF for v0.2 Pages deployment`
+3. 检查 CI（ Pages workflow 不会在此 docs-only PR 上触发，但可确认无冲突）后合并到 `main`。
+4. 合并后观察 Pages workflow 是否因 docs 更新而重新部署（通常 docs 变更不影响站点产物，但会触发一次 no-op build）。
+
+### 保留的分支
+
+- 个人仓库远程分支：`docs/bted-v0.2-handoff-v2`（commit `0dc4a73`，基于 `personal/main` `f9b3205`，仅修改 `docs/WORKLOG.md` 与 `docs/HANDOFF.md`）。
+- 本地工作树当前位于 `/Users/seu_yolo/Desktop/BGIRNA/.worktrees/assembly-track-download-demo` 的 `docs/bted-v0.2-handoff-v2` 分支。
+
+### 数据边界（重申）
+
+- 本次后续操作未修改任何科学数据、BED、JBrowse 资产、证据类别或记录数。
+- 仅更新项目文档与验证记录。
