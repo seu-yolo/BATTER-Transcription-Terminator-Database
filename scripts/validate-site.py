@@ -41,7 +41,7 @@ FORBIDDEN_EXTENSIONS = {
 # expected under ``jbrowse/`` after the versioned asset is unpacked.
 ALLOWED_JBROWSE_SUFFIXES = {
     ".html", ".css", ".js", ".json", ".txt", ".ico",
-    ".fna", ".fai", ".bed", ".bw", ".gff3.gz", ".tbi", ".ix", ".ixx",
+    ".fna", ".fai", ".bed", ".bw", ".gff3", ".gff3.gz", ".tbi", ".ix", ".ixx",
 }
 ALLOWED_DOWNLOAD_SUFFIXES = {".tsv", ".bed", ".json", ".txt"}
 
@@ -59,6 +59,12 @@ ABSOLUTE_PATH_PATTERNS = [
     (re.compile(r"(?:/Users/|/home/|/opt/|/var/|/tmp/|/private/)[^\s\"'<)]*"),
      "本地文件系统绝对路径"),
     (re.compile(r"[A-Za-z]:\\\\[^\s\"'<)]+"), "Windows 本地路径"),
+]
+
+# localhost / 127.0.0.1 / 内部 API endpoint 不应出现在正式 site/
+LOCALHOST_API_PATTERNS = [
+    (re.compile(r"127\.0\.0\.1|localhost", re.IGNORECASE), "localhost / 127.0.0.1 引用"),
+    (re.compile(r"/api/assemblies", re.IGNORECASE), "内部 API 路径 /api/assemblies"),
 ]
 
 # 凭据 / 密钥 / 口令占位
@@ -126,6 +132,14 @@ def scan_text(path: Path, rel: str, problems: list[str]) -> None:
     for regex, desc in FORBIDDEN_LABEL_PATTERNS:
         for m in regex.finditer(text):
             problems.append(f"{rel}:{line_of(text, m.start())} {desc}: {m.group(0)}")
+
+
+def scan_localhost_api(path: Path, rel: str, problems: list[str]) -> None:
+    """Scan project-authored text for localhost or internal API dependencies."""
+    text = path.read_text(encoding="utf-8")
+    for regex, desc in LOCALHOST_API_PATTERNS:
+        for m in regex.finditer(text):
+            problems.append(f"{rel}:{line_of(text, m.start())} {desc}: {m.group(0)[:80]}")
 
 
 def is_pinned_jbrowse_vendor_asset(rel: str) -> bool:
@@ -222,6 +236,10 @@ def main() -> int:
             # 2-4. 文本内容扫描
             if fpath.suffix.lower() in TEXT_EXTENSIONS and not is_pinned_jbrowse_vendor_asset(rel):
                 scan_text(fpath, rel, problems)
+
+            # 2-4b. localhost / API 依赖扫描（仅项目自产文本）
+            if fpath.suffix.lower() in TEXT_EXTENSIONS and not is_pinned_jbrowse_vendor_asset(rel):
+                scan_localhost_api(fpath, rel, problems)
 
             # 5. HTML 内部链接完整性
             if fpath.suffix.lower() in (".html", ".htm"):

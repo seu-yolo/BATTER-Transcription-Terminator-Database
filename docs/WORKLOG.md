@@ -1,5 +1,198 @@
 # 工作日志
 
+## 2026-08-17 —— accession 页面收敛为既有核心字段
+
+**分支：** `feature/research-user-dataset-context-v0.1`
+**范围：** 根据用户反馈简化试点页面；没有修改端点坐标、BED、证据类别或记录数。
+
+### 完成内容
+
+1. 移除“数据由谁产生，如何测量？”以及研究单位、实验室、通讯作者、培养、采样、测序平台和测序机构等扩展字段。
+2. 页面只使用此前已整理的核心字段：物种、菌株、assembly/contig、论文、实验方法、原始数据 accession 和证据类型；同时保留记录数、下载和 JBrowse 操作入口。
+3. 来源区改为 `Publications and experimental data / 论文与实验数据`，每个来源继续作为独立 track，不合并端点表。
+4. D1 试点仅为物种和菌株增加结构化列，其余论文、assay、accession 和 evidence 字段沿用现有 registry。
+
+### 结论
+
+现有 22 个来源已经足以生成该核心信息界面，不需要为了网页重新逐篇整理机构与详细实验条件。S1_002 继续保持 `audit_only`。
+
+## 2026-08-17 —— accession 页面科研背景信息试版
+
+**分支：** `feature/research-user-dataset-context-v0.1`
+**范围：** `GCF_000739105.1` 的 accession 检索页面、试点注册表和 D1 兼容字段；没有修改端点坐标、BED、证据类别或记录数。
+
+### 完成内容
+
+1. 页面第一层改为物种、菌株和精确参考组装；第二层按来源展示主要研究单位、实验室/院系、通讯作者、培养与采样设计、测序平台、read layout、生物学重复和数据入口；技术架构继续隐藏在后台。
+2. S1_007/013 均以 KAIST 为论文主要单位和 ENA submitting center；因论文与 ENA 未单独报告测序机构，页面明确显示 `Not separately reported`，不把提交中心推断为测序设施。
+3. 明确两个来源共同使用 `PRJEB31507`：它们是同一原始项目上的两份独立发表端点表，不再称为两次独立测序实验；在 JBrowse 中仍保持两条 source track。
+4. 试点 registry、D1 schema/seed、Worker API 和本地等价 API 增加结构化 `study_context`，中英文页面均由同一字段生成。
+5. 新增 `prototype/accession-range/STUDY_CONTEXT.md`，记录页面归属字段的论文依据和机构命名规则。
+
+### 验证
+
+- 浏览器实测中英文切换、物种概况、两张研究来源卡、论文/ENA/详情/BED/metadata/JBrowse 链接均正确；
+- 页面可见内容不显示 D1、API、对象路径或 Range 测试；
+- `python3 -m unittest -v tests/test_accession_range_prototype.py`：5/5 PASS；完整回归和站点验证在提交前执行。
+
+## 2026-08-16 —— accession 页面用户化与中英文切换
+
+**分支：** `feature/accession-range-prototype-v0.1`
+**范围：** accession 检索页面及其入口文案；没有修改端点坐标、BED、证据类别或记录数。
+
+### 完成内容
+
+1. 将原来的架构演示页改为科研用户任务流：输入 assembly accession → 查看基因组概况 → 查看独立研究 → 打开 JBrowse 或下载 BED/metadata。
+2. 从用户主界面移除编号架构图、D1、API route、对象路径和 128-byte Range 测试；底层 D1/Range 实现与测试仍保留在 `prototype/accession-range/`。
+3. 增加 EN/中文切换，覆盖页面导航、检索表单、状态消息、统计、研究表、证据标签、下载区和页脚，并通过 URL/localStorage 保留选择。
+4. S1_007/013 track 元数据补充发表年份、PMID 与站内来源详情链接；两项研究继续作为独立 `author_called_endpoint` 轨道展示。
+5. assembly 页和 Genomes 页入口改为 `Find this genome by accession / Quick search`，不再向普通用户显示 `API pilot / Architecture prototype`。
+6. 页面增加三项用户数据导读：收录范围、单条记录定义和“3′ 端不自动等同于功能性终止子”的证据边界。
+7. 动态研究表补充论文标题、PubMed、原始测序 accession/ENA 入口；增加来源特异的 TEP/TTS 解读、适用分析和不可直接推断的结论。
+
+### 验证
+
+- 浏览器实测英文与中文页面均返回 2 项研究、2,848 条记录，年份分别为 2019/2020；PubMed、PRJEB31507、BED、metadata、来源详情和 JBrowse 链接均生成正确；
+- 页面可见文本中不再出现 D1、API route、对象路径或 Range 测试；
+- `python3 -m unittest -v tests/test_accession_range_prototype.py`：5/5 PASS；完整回归、站点验证见本次提交的最终测试记录。
+
+## 2026-08-15 —— accession 查询与 Range 远程加载原型
+
+**分支：** `feature/accession-range-prototype-v0.1`
+**范围：** 共享组装 `GCF_000739105.1` 的部署架构试点；未修改 BATTER_S1_007/013 的核心端点表、BED 坐标、证据类别或记录数。
+
+### 做这个原型的原因
+
+- 当前完整 Pages 预览约 447 MB，其中 JBrowse 约 408 MB；继续把每个来源的参考 FASTA/GFF3 和轨道全部复制进静态站点，不适合大量 assembly 扩展。
+- S1_007 与 S1_013 使用完全相同的 assembly/contig。核对确认两份 FASTA、FAI、gene GFF3 和 TBI 的 SHA-256 分别完全相等，因此可以按 assembly 只保留一组参考对象，同时保留两条独立实验 track。
+
+### 完成内容
+
+1. 建立 D1 兼容的 `assemblies / assets / tracks` schema 和单 assembly seed；accession 是参考资源主键，source ID 仍是实验 track 身份。
+2. 建立 checksum 冻结的 6 对象注册表：1 FASTA、1 FAI、1 GFF3、1 TBI 和 2 个来源 BED；共享参考/注释避免重复 8,628,614 bytes。
+3. 实现生产形态 Cloudflare Worker：
+   - `GET /api/assemblies/{accession}`；
+   - `GET /api/assemblies/{accession}/jbrowse-config`；
+   - `GET|HEAD /api/remote-data/{asset_key}`。
+4. `/api/remote-data` 只接受 D1 中注册的 asset key，生产代码限制为允许的 Hugging Face host，不接受任意 `?url=`，避免成为开放代理。
+5. 实现本地 API-aware server，在不上传外部对象和不需要 Cloudflare 凭据的情况下复现同一浏览器/API contract；启动时逐对象复算 byte size 与 SHA-256。
+6. 网站新增 accession-loading prototype 页面、Range 检查和动态 JBrowse 入口；`GCF_000739105.1` 详情页和 Genomes 行提供明确的 experimental pilot 入口。
+
+### 验证
+
+- API：`GCF_000739105.1` 返回 2,848 records、6 objects、2 independent tracks；
+- Range：FASTA 请求 `bytes=0-127` 返回 `206 Partial Content`、`Content-Range: bytes 0-127/8484410` 和 128 bytes；
+- JBrowse：动态 config 返回 1 assembly、1 shared gene track、2 source tracks；实际浏览器可见基因及 S1_007/S1_013，0 warning/error；
+- `python3 -m unittest -v tests/test_accession_range_prototype.py tests/test_bted_v0_2.py tests/test_bted_ingestion.py`：20/20 PASS；
+- `validate-site.py site` 与完整 `.pages-preview`：PASS。
+
+### 尚未执行的外部部署
+
+- 尚未创建真实 Cloudflare D1，也未把对象上传到 Hugging Face；`wrangler.jsonc` 中保持显式占位符。
+- 生产迁移前还需确定对象仓库、许可、缓存策略、自定义域名和费用，并对真实 origin 重跑 HEAD/206/checksum 验收。
+
+## 2026-08-14 —— Genomes 目录页科研用户体验改版
+
+**分支：** `feature/genomes-catalog-ux-v0.2`
+**范围：** Genomes 目录、目录筛选和按基因组批量下载；未修改端点数据、BED 坐标、证据类别、详情页或 JBrowse 科学资产。
+
+### 完成内容
+
+1. 参考 NCBI 的 assembly 入口、ENCODE 的筛选/选择与 Bacteroides/JBrowse 的独立 track 组织，将 Genomes 页明确为“查找基因组—选择数据—进入详情或浏览器”的目录。
+2. 表格从 7 列收敛为 5 个用户概念：`Genome / Experimental data / Evidence / 3′ ends / Access`；物种与菌株升为主标题，assembly accession 放在下方并直连 NCBI。
+3. 移除目录主视图中重复的 Source ID、Tracks 和 Status 列；将 track 数换成 `1 study / 2 studies`，仅对异常来源显示 `Metadata only`。
+4. 筛选改为物种、实验方法与证据类别；搜索继续支持物种、菌株、assembly、Source ID 和原始数据 accession。
+5. 在 Genomes 页增加复选框、`Select visible`、已选数量/记录数和 `Download BED + metadata`；沿用现有无依赖 ZIP 打包，每个 assembly 仍保持独立目录。
+6. `site/data/catalog.json` 新增 assembly 级 `evidence_classes`，作为页面自动生成与筛选依据。
+
+### 验证
+
+- `python3 scripts/validate-site.py site`：PASS；
+- `python3 -m unittest -v tests/test_bted_v0_2.py tests/test_bted_ingestion.py`：15/15 PASS；
+- 浏览器实测搜索、证据筛选、动态可见数量、`Select visible` 和下载按钮状态，控制台无 warning/error；
+- `git diff --check`：PASS。
+
+## 2026-08-14 —— Rend-seq 浏览器可读性与端点详情补强
+
+**分支：** `agent/assembly-track-download-demo`
+**范围：** S1_001、S1_003、S1_004、S1_005 的 JBrowse 展示和对应网站说明；未修改核心端点表、标准 BED、原始信号或证据类别。
+
+### 完成内容
+
+1. 四个来源的默认窗口不再取第一个端点，而是确定性选择最早一组相邻、距离不超过 500 nt 的异链候选，并在其两侧各扩展 1.5 kb；打开即能同时看到正、负链箭头。
+2. 轨道标题直接作为图例：`blue + above zero / orange − below zero`，候选轨道显示 `blue → + strand / orange ← − strand`，避免只靠隐含颜色判断。
+3. 浏览器专用候选文件由匿名 BED6 改为富属性 GFF3。点击端点可见稳定 `end_id`、1-based 坐标、strand、原始 read support、BED6 capped score、样本、基因语境、`called_endpoint` 和“不是已证明终止子”的证据警告。
+4. 标准公开 `endpoints.bed` 与 canonical candidate BED 保持不变；GFF3 只服务交互展示，不替代 BED 下载接口。
+5. Rend-seq 来源页和 assembly 页增加简短读图卡，解释正负链配色、箭头、零线和点击详情；非 Rend-seq 页面不显示该专用说明。
+6. 网站 JBrowse URL 加入编码后的配置版本参数，避免浏览器继续使用旧配置缓存。
+
+### 遇到的问题与解决
+
+- **默认窗口只有单一链，造成“箭头方向都一样”的错觉。** 底层 BED strand 核查正常；问题来自首端点窗口的抽样位置。默认窗口改为明确含两种 strand 的展示区域，并由发布校验器逐来源检查。
+- **GFF3 即使 display 层写 `showLabels: false` 仍显示长名称。** JBrowse 的该开关属于 renderer 配置；已移动到 `SvgFeatureRenderer`，默认只画紧凑箭头，点击后再展开完整详情。
+- **压缩显示 BigWig 在 JBrowse 2.17 的部分窗口报 `invalid cirTree magic`。** UCSC `bigWigInfo` 能读取，但浏览器实际 range 读取失败。构建器改为 `bedGraphToBigWig -unc` 生成 display-only signed-log v4 BigWig；浏览器错误清零。原始压缩 BigWig 不变并保留在 `Full evidence view`。Release 解包体积增加，但归档仍由 gzip 压缩且未进入 Git。
+
+### 验证
+
+- JBrowse validator 检查四个默认窗口均含 `+/-`、GFF3 弹窗必填属性、显示 BigWig v4/uncompressed header、21 套配置和 checksum；
+- 实际浏览器核查 S1_003：信号和端点均正常加载，0 alert；蓝色箭头向右、橙色箭头向左；点击 `NC_000964.3:22,416 (+)` 可看到稳定 ID、raw support 652、证据类别和警告；
+- 站点与完整 Pages 预览校验通过，15 项 v0.2/ingestion 回归全部通过。
+
+## 2026-08-13 —— Rend-seq 正负链紧凑浏览视图
+
+**分支：** `agent/assembly-track-download-demo`
+**范围：** 4 个 Lalanne Rend-seq 来源的 JBrowse 展示与发布构建；没有修改核心端点表、原始信号或证据类别。
+
+### 完成内容
+
+1. S1_001、S1_003、S1_004、S1_005 的默认视图由 5–7 条轨道收敛为三条：基因注释、正负链配对实验信号、正负链合并候选端点。
+2. 生成仅用于显示的 signed-log BigWig：`+` 链为 `+log10(1+raw signal)`，`-` 链为 `-log10(1+raw signal)`。负值只编码链方向，不表示负的实验丰度。
+3. 合并端点 BED 只做逐行拼接和坐标排序，保留 BED6 的原坐标、score 和 strand；蓝色右向为 `+`，橙色左向为 `-`。
+4. 原始正/负链 BigWig 与原始正/负链候选 BED 均保留在 `Full evidence view` 分类中，可从 Track selector 打开核查。
+5. 默认会话只打开三条紧凑轨道；非 Rend-seq 来源和共享 assembly 多来源视图保持原有独立来源轨道逻辑。
+
+### 遇到的问题与解决
+
+- **E. coli 浏览器专用 gene-proximal BED 被 B. subtilis 同名文件覆盖。** 构建器首次生成合并 BED 时触发 `NC_000964.3` 不在 E. coli FAI 的硬失败。核心数据库与各来源 `processed/` 规范文件未受影响。发布构建器现从四个来源各自的 canonical processed BED 复制，并逐行检查 BED6 与预期 strand，避免再使用易冲突的旧 viewer 副本。
+- **未转换的多 BigWig 叠加不能形成清楚的上下镜像。** 新增可复现的 display-only signed-log 变换；原始信号轨道继续保留，显示变换写入 track metadata 和名称。
+- **E. coli 旧配置还含两条全量候选轨道。** 紧凑公开配置不再引用它们，打包器同步删除未引用的来源资产；完整规范数据仍留在本地处理目录。
+
+### 验证
+
+- JBrowse 构建：21 个来源配置、2 个共享 assembly 配置、133 个来源前缀资产；
+- JBrowse 与 Pages 校验全部通过；15 项 v0.2/ingestion 回归全部通过；
+- 实际浏览器核查 S1_003：默认只显示 3 条轨道，正链位于零线上方、负链位于零线下方，端点正负链位于同一轨道；控制台 0 warning / 0 error。
+
+### 已知限制
+
+- signed-log 是显示变换，不能用其纵轴值替代原始 read support；科研分析应使用原始 BigWig/TSV。
+- 当前 JBrowse 的合并端点轨道依靠颜色和箭头表达链方向，尚未强制把 `+`/`-` 端点分别置于同一轨道的上下两行。
+
+## 2026-08-13 —— 纯英文网站与 accession 导航
+
+**分支：** `agent/assembly-track-download-demo`
+**范围：** 网站生成、原始数据导航和前端回归；未修改科学记录或证据解释。
+
+### 完成内容
+
+1. 移除当前网页中的中文副本和语言选择按钮，全站暂时只输出英文。
+2. 英文标签保留稳定的 `data-i18n-key`，后续可以用审校后的翻译字典实现语言切换，无需复制页面模板。
+3. 为 GEO（GSE）、SRA（SRP/SRX）、BioProject（PRJNA）、ENA（PRJEB）和 BioStudies/ArrayExpress（E-MTAB）建立 accession 路由。
+4. 22 个来源页新增 **Raw data accessions** 区域；多个 accession 分别显示和跳转，不再只提供一个笼统的 repository 链接。
+5. 参考 assembly accession 链接到 NCBI Datasets；assembly 页面同时显示各来源的原始数据 accession。
+6. `site/data/catalog.json` 新增 accession 与 raw-data URL，Genomes 搜索支持 accession number。
+
+### 验证
+
+- `python3 scripts/validate-site.py site` 与完整 Pages 预览验证通过；
+- `tests/test_bted_v0_2.py` 10/10、`tests/test_bted_ingestion.py` 4/4 通过；
+- v0.2 数据验证保持 21 个公开来源、1 个 audit-only 来源、28,399 条记录；
+- 浏览器实测 S1_017 的 2 个 GEO accession 与 S1_020 的 5 个 BioStudies/GEO accession，链接类型正确、可见中文字符为 0、控制台无 warning/error。
+
+### 后续决定
+
+- 本轮不提供中文翻译；后续语言切换应使用经过人工审校的翻译字典，而不是重新在生成器中维护两套页面文案。
+
 ## 2026-08-12 —— 按导师意见完成组装中心网站演示版
 
 **分支：** `agent/assembly-track-download-demo`
