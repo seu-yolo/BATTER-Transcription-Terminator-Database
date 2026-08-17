@@ -14,34 +14,50 @@
 
   const messages = {
     en: {
-      pageTitle: "Search genome data · BTED",
+      pageTitle: "Search genome datasets · BTED",
       ready: "Enter an accession to begin.",
       loading: "Searching for {accession}…",
-      found: "Found {studies} studies and {records} transcript 3′-end records.",
+      found: "Found {sources} source datasets and {records} transcript 3′-end records.",
       error: "No data were found for this accession. Check the accession and try again.",
-      sourceNote: "{sources} are shown as independent experimental tracks on this exact reference assembly.",
-      details: "View source",
+      institution: "Lead institution",
+      laboratory: "Laboratory / department",
+      correspondingAuthor: "Corresponding author",
+      culture: "Culture",
+      sampling: "Sampling",
+      sequencing: "Sequencing",
+      replicates: "Biological replicates",
+      submitter: "ENA submitting center",
+      facility: "Sequencing facility",
+      endpointSet: "Endpoint set",
       publication: "Publication",
-      rawData: "Raw data",
-      authorEndpoint: "Author-called endpoint",
-      curatedRecord: "Literature-curated record",
-      auditOnly: "Metadata only",
-      unknownYear: "—",
+      rawData: "Raw sequencing",
+      details: "Dataset record",
+      authorEndpoint: "author-called endpoints",
+      curatedRecord: "literature-curated records",
+      auditOnly: "metadata records",
     },
     zh: {
-      pageTitle: "检索基因组数据 · BTED",
+      pageTitle: "检索基因组数据集 · BTED",
       ready: "输入登录号开始检索。",
       loading: "正在检索 {accession}…",
-      found: "已找到 {studies} 项研究和 {records} 条转录本 3′ 端记录。",
+      found: "已找到 {sources} 个来源数据集和 {records} 条转录本 3′ 端记录。",
       error: "未找到该登录号对应的数据，请检查后重试。",
-      sourceNote: "{sources} 在这一精确参考组装上作为相互独立的实验轨道展示。",
-      details: "查看来源",
-      publication: "文献",
-      rawData: "原始数据",
-      authorEndpoint: "作者定义的实验端点",
-      curatedRecord: "文献整理记录",
-      auditOnly: "仅元数据",
-      unknownYear: "—",
+      institution: "主要研究单位",
+      laboratory: "实验室 / 院系",
+      correspondingAuthor: "通讯作者",
+      culture: "培养条件",
+      sampling: "采样设计",
+      sequencing: "测序信息",
+      replicates: "生物学重复",
+      submitter: "ENA 提交中心",
+      facility: "测序机构",
+      endpointSet: "端点数据",
+      publication: "论文",
+      rawData: "原始测序",
+      details: "数据集详情",
+      authorEndpoint: "个作者定义端点",
+      curatedRecord: "条文献整理记录",
+      auditOnly: "条元数据记录",
     },
   };
 
@@ -61,6 +77,19 @@
     return Number(value).toLocaleString(locale());
   }
 
+  function formatGenomeSize(value) {
+    return `${(Number(value) / 1_000_000).toLocaleString(locale(), {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} Mb`;
+  }
+
+  function localized(object, key) {
+    if (!object) return "—";
+    if (currentLanguage === "zh" && object[`${key}_zh`]) return object[`${key}_zh`];
+    return object[key] || "—";
+  }
+
   function setText(selector, value) {
     root.querySelector(selector).textContent = value;
   }
@@ -74,54 +103,82 @@
     return labels[value] ? message(labels[value]) : value.replaceAll("_", " ");
   }
 
-  function renderStudies(tracks) {
-    const body = root.querySelector("[data-edge-studies]");
-    body.replaceChildren();
+  function addFact(list, label, value) {
+    const item = document.createElement("div");
+    const term = document.createElement("dt");
+    const description = document.createElement("dd");
+    term.textContent = label;
+    description.textContent = value || "—";
+    item.append(term, description);
+    list.appendChild(item);
+  }
+
+  function actionLink(label, href, external = false) {
+    const link = document.createElement("a");
+    link.className = "study-link";
+    link.href = href;
+    link.textContent = label;
+    if (external) {
+      link.target = "_blank";
+      link.rel = "noopener";
+    }
+    return link;
+  }
+
+  function renderStudyCards(tracks) {
+    const list = root.querySelector("[data-edge-study-cards]");
+    list.replaceChildren();
     tracks.forEach((track) => {
-      const row = document.createElement("tr");
+      const context = track.study_context || {};
+      const card = document.createElement("article");
+      card.className = "study-context-card";
 
-      const study = document.createElement("td");
-      const title = document.createElement("strong");
+      const header = document.createElement("header");
+      const meta = document.createElement("div");
+      meta.className = "study-card-meta";
+      const role = document.createElement("span");
+      role.className = "study-role";
+      role.textContent = localized(context, "source_role");
+      const identity = document.createElement("span");
+      identity.textContent = `${track.source_id} · ${track.publication_year}`;
+      meta.append(role, identity);
+      const title = document.createElement("h3");
       title.textContent = track.paper_title || track.name;
-      const source = document.createElement("small");
-      source.textContent = `${track.source_id} · ${track.publication_year || message("unknownYear")}`;
-      study.append(title, source);
+      const relationship = document.createElement("p");
+      relationship.textContent = localized(context, "data_relationship");
+      header.append(meta, title, relationship);
 
-      const assay = document.createElement("td");
-      assay.textContent = track.assay;
+      const institution = document.createElement("section");
+      institution.className = "study-institution";
+      const institutionLabel = document.createElement("span");
+      institutionLabel.textContent = message("institution");
+      const institutionName = document.createElement("strong");
+      institutionName.textContent = context.lead_institution || "—";
+      const laboratory = document.createElement("p");
+      laboratory.textContent = context.lead_laboratory || "—";
+      const location = document.createElement("small");
+      location.textContent = `${localized(context, "country")} · ${message("correspondingAuthor")}: ${context.corresponding_author || "—"}`;
+      institution.append(institutionLabel, institutionName, laboratory, location);
 
-      const evidence = document.createElement("td");
-      evidence.textContent = evidenceLabel(track.evidence_class);
+      const facts = document.createElement("dl");
+      facts.className = "study-facts";
+      addFact(facts, message("culture"), localized(context, "culture_condition"));
+      addFact(facts, message("sampling"), localized(context, "sampling_scheme"));
+      addFact(facts, message("sequencing"), `${context.sequencing_platform || "—"} · ${localized(context, "read_layout")}`);
+      addFact(facts, message("replicates"), formatNumber(context.biological_replicates || 0));
+      addFact(facts, message("submitter"), context.ena_submitting_center || "—");
+      addFact(facts, message("facility"), localized(context, "sequencing_facility"));
+      addFact(facts, message("endpointSet"), `${formatNumber(track.record_count)} ${evidenceLabel(track.evidence_class)}`);
 
-      const count = document.createElement("td");
-      count.className = "number";
-      count.textContent = formatNumber(track.record_count);
+      const footer = document.createElement("footer");
+      footer.append(
+        actionLink(`${message("publication")} · PMID ${track.pmid}`, track.publication_url, true),
+        actionLink(`${message("rawData")} · ${track.raw_data_accession}`, track.raw_data_url, true),
+        actionLink(message("details"), track.record_url || `records/${encodeURIComponent(track.source_id)}.html`),
+      );
 
-      const links = document.createElement("td");
-      links.className = "source-link-stack";
-      if (track.publication_url) {
-        const publication = document.createElement("a");
-        publication.href = track.publication_url;
-        publication.target = "_blank";
-        publication.rel = "noopener";
-        publication.textContent = `${message("publication")} · PMID ${track.pmid}`;
-        links.appendChild(publication);
-      }
-      if (track.raw_data_url) {
-        const rawData = document.createElement("a");
-        rawData.href = track.raw_data_url;
-        rawData.target = "_blank";
-        rawData.rel = "noopener";
-        rawData.textContent = `${message("rawData")} · ${track.raw_data_accession}`;
-        links.appendChild(rawData);
-      }
-      const details = document.createElement("a");
-      details.href = track.record_url || `records/${encodeURIComponent(track.source_id)}.html`;
-      details.textContent = message("details");
-      links.appendChild(details);
-
-      row.append(study, assay, evidence, count, links);
-      body.appendChild(row);
+      card.append(header, institution, facts, footer);
+      list.appendChild(card);
     });
   }
 
@@ -143,17 +200,21 @@
 
   function render(payload) {
     currentPayload = payload;
+    setText("[data-edge-scientific-name]", payload.assembly.scientific_name || payload.assembly.display_name);
+    setText("[data-edge-strain]", payload.assembly.strain || "");
     setText("[data-edge-assembly]", payload.assembly.accession);
     setText("[data-edge-reference]", payload.assembly.reference_name);
+    setText("[data-edge-genome-size]", formatGenomeSize(payload.assembly.reference_length));
+    setText("[data-edge-replicons]", formatNumber(payload.assembly.replicon_count || 1));
     setText("[data-edge-tracks]", formatNumber(payload.tracks.length));
     setText("[data-edge-records]", formatNumber(payload.record_count));
-    setText("[data-edge-organism]", payload.assembly.display_name);
-    setText("[data-edge-summary-note]", message("sourceNote", {
-      sources: payload.source_ids.join(currentLanguage === "zh" ? "、" : " and "),
-    }));
-    renderStudies(payload.tracks);
+    setText("[data-edge-relationship]", currentLanguage === "zh"
+      ? payload.assembly.source_relationship_note_zh
+      : payload.assembly.source_relationship_note);
+    renderStudyCards(payload.tracks);
     renderInterpretations(payload.tracks);
 
+    root.querySelector("[data-edge-shared-raw]").href = payload.tracks[0].raw_data_url;
     root.querySelector("[data-edge-jbrowse]").href =
       `jbrowse/index.html?config=${encodeURIComponent(payload.jbrowse_config_url)}`;
     root.querySelector("[data-edge-assembly-page]").href =
@@ -182,7 +243,7 @@
     if (currentPayload) {
       render(currentPayload);
       status.textContent = message("found", {
-        studies: formatNumber(currentPayload.tracks.length),
+        sources: formatNumber(currentPayload.tracks.length),
         records: formatNumber(currentPayload.record_count),
       });
     } else {
@@ -203,7 +264,7 @@
       render(payload);
       status.className = "edge-query-status success";
       status.textContent = message("found", {
-        studies: formatNumber(payload.tracks.length),
+        sources: formatNumber(payload.tracks.length),
         records: formatNumber(payload.record_count),
       });
       const url = new URL(window.location.href);

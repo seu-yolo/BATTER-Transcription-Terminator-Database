@@ -39,6 +39,9 @@ class TestAccessionRangePrototype(unittest.TestCase):
         self.assertEqual(assembly["record_count"], 2_848)
         self.assertEqual(len(assembly["reference_assets"]), 4)
         self.assertEqual(len(assembly["tracks"]), 2)
+        self.assertEqual(assembly["scientific_name"], "Streptomyces lividans")
+        self.assertEqual(assembly["strain"], "TK24")
+        self.assertIn("shared raw-data project", assembly["source_relationship_note"])
         self.assertEqual(
             [track["publication_year"] for track in assembly["tracks"]],
             [2019, 2020],
@@ -50,6 +53,9 @@ class TestAccessionRangePrototype(unittest.TestCase):
         )
         self.assertTrue(all(track["publication_url"].startswith("https://pubmed.ncbi.nlm.nih.gov/") for track in assembly["tracks"]))
         self.assertTrue(all(track["interpretation_note"] and track["interpretation_note_zh"] for track in assembly["tracks"]))
+        self.assertTrue(all(track["study_context"]["lead_institution"] == "Korea Advanced Institute of Science and Technology (KAIST)" for track in assembly["tracks"]))
+        self.assertTrue(all(track["study_context"]["ena_submitting_center"] == "KAIST" for track in assembly["tracks"]))
+        self.assertTrue(all(track["study_context"]["sequencing_facility"] == "Not separately reported" for track in assembly["tracks"]))
         self.assertTrue(all(
             len(REGISTRY["assets"][asset_key].get("equivalent_source_assets", [])) == 2
             for asset_key in assembly["reference_assets"].values()
@@ -75,6 +81,8 @@ class TestAccessionRangePrototype(unittest.TestCase):
             [track["metadata"].get("source_id") for track in config["tracks"][1:]],
             ["BATTER_S1_007", "BATTER_S1_013"],
         )
+        self.assertEqual(payload["assembly"]["scientific_name"], "Streptomyces lividans")
+        self.assertEqual(payload["tracks"][0]["study_context"]["sequencing_platform"], "Illumina HiSeq 2500")
         serialized = json.dumps(config)
         self.assertNotIn("huggingface.co", serialized)
         self.assertNotIn("../assets/", serialized)
@@ -93,14 +101,18 @@ class TestAccessionRangePrototype(unittest.TestCase):
         page = (REPO_ROOT / "site/accession-range-demo.html").read_text(encoding="utf-8")
         assembly = (REPO_ROOT / "site/assemblies/GCF_000739105.1.html").read_text(encoding="utf-8")
         genomes = (REPO_ROOT / "site/sources.html").read_text(encoding="utf-8")
-        self.assertIn("Find transcript 3′-end data", page)
-        self.assertIn("查找转录本 3′ 端数据", page)
+        script = (REPO_ROOT / "site/assets/accession-range-demo.js").read_text(encoding="utf-8")
+        self.assertIn("Find transcript 3′-end datasets", page)
+        self.assertIn("查找转录本 3′ 端数据集", page)
         self.assertIn('data-language-choice="en"', page)
         self.assertIn('data-language-choice="zh"', page)
-        self.assertIn("What does one record mean?", page)
-        self.assertIn("一条记录代表什么？", page)
-        self.assertIn("Studies available for this genome", page)
-        self.assertIn("What do these records represent?", page)
+        self.assertIn("Who generated the data, and how?", page)
+        self.assertIn("数据由谁产生，如何测量？", page)
+        self.assertIn("Shared raw-data project", page)
+        self.assertIn("Lead institution", script)
+        self.assertIn("主要研究单位", script)
+        self.assertNotIn("What does one record mean?", page)
+        self.assertNotIn("Suitable uses", page)
         self.assertNotIn("D1-compatible registry", page)
         self.assertNotIn("Test 128-byte Range", page)
         self.assertIn("accession-range-demo.js", page)

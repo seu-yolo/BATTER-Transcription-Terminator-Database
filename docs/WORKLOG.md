@@ -1,5 +1,24 @@
 # 工作日志
 
+## 2026-08-17 —— accession 页面科研背景信息试版
+
+**分支：** `feature/research-user-dataset-context-v0.1`
+**范围：** `GCF_000739105.1` 的 accession 检索页面、试点注册表和 D1 兼容字段；没有修改端点坐标、BED、证据类别或记录数。
+
+### 完成内容
+
+1. 页面第一层改为物种、菌株和精确参考组装；第二层按来源展示主要研究单位、实验室/院系、通讯作者、培养与采样设计、测序平台、read layout、生物学重复和数据入口；技术架构继续隐藏在后台。
+2. S1_007/013 均以 KAIST 为论文主要单位和 ENA submitting center；因论文与 ENA 未单独报告测序机构，页面明确显示 `Not separately reported`，不把提交中心推断为测序设施。
+3. 明确两个来源共同使用 `PRJEB31507`：它们是同一原始项目上的两份独立发表端点表，不再称为两次独立测序实验；在 JBrowse 中仍保持两条 source track。
+4. 试点 registry、D1 schema/seed、Worker API 和本地等价 API 增加结构化 `study_context`，中英文页面均由同一字段生成。
+5. 新增 `prototype/accession-range/STUDY_CONTEXT.md`，记录页面归属字段的论文依据和机构命名规则。
+
+### 验证
+
+- 浏览器实测中英文切换、物种概况、两张研究来源卡、论文/ENA/详情/BED/metadata/JBrowse 链接均正确；
+- 页面可见内容不显示 D1、API、对象路径或 Range 测试；
+- `python3 -m unittest -v tests/test_accession_range_prototype.py`：5/5 PASS；完整回归和站点验证在提交前执行。
+
 ## 2026-08-16 —— accession 页面用户化与中英文切换
 
 **分支：** `feature/accession-range-prototype-v0.1`

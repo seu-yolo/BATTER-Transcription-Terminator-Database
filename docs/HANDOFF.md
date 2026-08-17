@@ -1,10 +1,19 @@
 # BTED 当前交接
 
-**更新：** 2026-08-16
+**更新：** 2026-08-17
 
-**当前分支：** `feature/accession-range-prototype-v0.1`
+**当前分支：** `feature/research-user-dataset-context-v0.1`
 
-**当前里程碑：** `GCF_000739105.1` accession/Range 架构试点已具备面向用户的双语检索页；页面、API、HTTP 206 和动态 JBrowse 均在本地跑通，真实 Cloudflare D1 与 Hugging Face 对象上传尚未授权或执行。
+**当前里程碑：** `GCF_000739105.1` 已形成“物种—研究单位—实验设计—论文/原始数据—BED/JBrowse”的双语科研用户试页；页面、API、HTTP 206 和动态 JBrowse 均在本地跑通，真实 Cloudflare D1 与 Hugging Face 对象上传尚未授权或执行。
+
+## 2026-08-17 科研背景信息试版
+
+- 页面不再用大段通用说明占据首屏，先显示 *Streptomyces lividans* TK24、精确 assembly/contig、基因组大小、来源数据集和端点总数。
+- S1_007/013 分别展示论文角色、KAIST 主要单位、实验室/院系、通讯作者、R5−/30 °C 培养、四个采样时间、生物学重复及 HiSeq 2500/单端 50 bp Term-seq。
+- 两项来源共享 `PRJEB31507`；页面明确这是同一原始项目上的两份发表端点表，不描述为独立测序。来源 track 和端点定义仍彼此独立。
+- “论文主要单位”“ENA 提交中心”“测序机构”是三个不同字段；后者没有可靠信息时固定显示未单独报告。
+- 页面字段出处与命名规则见 `prototype/accession-range/STUDY_CONTEXT.md`。
+- 本地入口：`http://127.0.0.1:8017/accession-range-demo.html?accession=GCF_000739105.1&lang=zh`。
 
 ## 2026-08-16 用户化双语检索页
 

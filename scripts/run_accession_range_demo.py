@@ -86,8 +86,13 @@ def build_assembly_payload(registry: dict[str, Any], accession: str, base_url: s
         "assembly": {
             "accession": accession,
             "display_name": assembly["display_name"],
+            "scientific_name": assembly["scientific_name"],
+            "strain": assembly["strain"],
             "reference_name": assembly["reference_name"],
             "reference_length": assembly["reference_length"],
+            "replicon_count": assembly["replicon_count"],
+            "source_relationship_note": assembly["source_relationship_note"],
+            "source_relationship_note_zh": assembly["source_relationship_note_zh"],
         },
         "record_count": assembly["record_count"],
         "source_ids": assembly["source_ids"],
