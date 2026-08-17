@@ -1,5 +1,45 @@
 # 工作日志
 
+## 2026-08-18 —— BTED v0.2 网站静态化并部署到个人仓库 GitHub Pages
+
+**分支：** `feature/research-user-dataset-context-v0.1` → `integration/bted-v0.2-site-release` → `seu-yolo/main`
+**范围：** 将 accession 查询页面从本地 Python API 迁移到静态 JSON，修复 Release JBrowse 资产，完成 GitHub Pages 部署和线上验证；没有修改端点坐标、BED、证据类别或记录数。
+
+### 完成内容
+
+1. `scripts/build_v0_2_site.py` 新增 `build_assemblies_json()`，自动生成 `site/data/assemblies.json`，覆盖 20 个组装、22 个来源、28,399 条记录。
+2. `site/assets/accession-range-demo.js` 改为读取 `data/assemblies.json` 并按 accession 查找；移除所有 `localhost`、`127.0.0.1` 和 `/api/assemblies` 依赖。
+3. 为每个来源卡片增加状态标签：`Signal + endpoints` / `Endpoints only` / `Metadata only`。
+4. `S1_002`（audit_only）不显示 JBrowse 入口或 BED 下载；Rend-seq 来源保持 `signal_endpoints`。
+5. `scripts/validate-site.py` 新增 localhost/API 依赖扫描；`scripts/validate_repo_layout.py` 允许保留 `prototype/`。
+6. 新增回归测试 `test_static_assemblies_json_powers_accession_search`。
+7. 发现个人仓库 `preview-v0.2.0` Release 的 JBrowse 资产缺少本地 dist 中已验证的 `.gff3` 文件，导致首次 Pages 部署失败；用本地 `dist/BTED-v0.2.0-jbrowse-assets.tar.gz` 替换 Release 资产并更新 checksum。
+8. 推送 `integration/bted-v0.2-site-release` 到个人仓库，创建 PR #2，合并到 `main`；触发并等待 Pages 部署成功。
+9. 线上验证：首页、Genomes 目录、accession 查询、中英文切换、`GCF_000739105.1` 页面、JBrowse 配置与下载链接均正常返回 200。
+
+### 验证
+
+- `python3 -m unittest -v tests/test_bted_ingestion.py tests/test_bted_v0_2.py tests/test_accession_range_prototype.py`：21/21 PASS。
+- `python3 scripts/validate-site.py site` / `.pages-preview`：PASS。
+- `python3 scripts/validate_jbrowse_release.py .pages-preview/jbrowse`：PASS。
+- `node --check site/assets/accession-range-demo.js`：PASS。
+- GitHub Actions `Deploy BTED Pages` run 32054805656：completed success。
+
+### 线上地址
+
+- 网站：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/
+- PR：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/pull/2
+- Actions：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/actions/runs/32054805656
+- Release tag：`preview-v0.2.0`（JBrowse 资产已替换，sha256 同步更新）
+- 合并 commit：`f9b3205926b8223f7427d1f7e8758ab0b267bc92`
+
+### 未完成 / 需后续关注
+
+- 本地沙箱无法启动普通静态服务器，浏览器 JS 实际渲染和 JBrowse 交互未在本地实测；已通过文件系统路径验证和线上 HTTP 200 检查覆盖。
+- 线上 JBrowse 的 track 实际加载和 peak 显示需人工在浏览器中确认。
+
+
+
 ## 2026-08-17 —— accession 页面收敛为既有核心字段
 
 **分支：** `feature/research-user-dataset-context-v0.1`
