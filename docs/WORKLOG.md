@@ -1,5 +1,84 @@
 # 工作日志
 
+## 2026-08-18 —— BTED v0.2 网站静态化并部署到个人仓库 GitHub Pages
+
+**分支：** `feature/research-user-dataset-context-v0.1` → `integration/bted-v0.2-site-release` → `seu-yolo/main`
+**范围：** 将 accession 查询页面从本地 Python API 迁移到静态 JSON，修复 Release JBrowse 资产，完成 GitHub Pages 部署和线上验证；没有修改端点坐标、BED、证据类别或记录数。
+
+### 完成内容
+
+1. `scripts/build_v0_2_site.py` 新增 `build_assemblies_json()`，自动生成 `site/data/assemblies.json`，覆盖 20 个组装、22 个来源、28,399 条记录。
+2. `site/assets/accession-range-demo.js` 改为读取 `data/assemblies.json` 并按 accession 查找；移除所有 `localhost`、`127.0.0.1` 和 `/api/assemblies` 依赖。
+3. 为每个来源卡片增加状态标签：`Signal + endpoints` / `Endpoints only` / `Metadata only`。
+4. `S1_002`（audit_only）不显示 JBrowse 入口或 BED 下载；Rend-seq 来源保持 `signal_endpoints`。
+5. `scripts/validate-site.py` 新增 localhost/API 依赖扫描；`scripts/validate_repo_layout.py` 允许保留 `prototype/`。
+6. 新增回归测试 `test_static_assemblies_json_powers_accession_search`。
+7. 发现个人仓库 `preview-v0.2.0` Release 的 JBrowse 资产缺少本地 dist 中已验证的 `.gff3` 文件，导致首次 Pages 部署失败；用本地 `dist/BTED-v0.2.0-jbrowse-assets.tar.gz` 替换 Release 资产并更新 checksum。
+8. 推送 `integration/bted-v0.2-site-release` 到个人仓库，创建 PR #2，合并到 `main`；触发并等待 Pages 部署成功。
+9. 线上验证：首页、Genomes 目录、accession 查询、中英文切换、`GCF_000739105.1` 页面、JBrowse 配置与下载链接均正常返回 200。
+
+### 验证
+
+- `python3 -m unittest -v tests/test_bted_ingestion.py tests/test_bted_v0_2.py tests/test_accession_range_prototype.py`：21/21 PASS。
+- `python3 scripts/validate-site.py site` / `.pages-preview`：PASS。
+- `python3 scripts/validate_jbrowse_release.py .pages-preview/jbrowse`：PASS。
+- `node --check site/assets/accession-range-demo.js`：PASS。
+- GitHub Actions `Deploy BTED Pages` run 32054805656：completed success。
+
+### 线上地址
+
+- 网站：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/
+- PR：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/pull/2
+- Actions：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/actions/runs/32054805656
+- Release tag：`preview-v0.2.0`（JBrowse 资产已替换，sha256 同步更新）
+- 合并 commit：`f9b3205926b8223f7427d1f7e8758ab0b267bc92`
+
+### 未完成 / 需后续关注
+
+- 本地沙箱无法启动普通静态服务器，浏览器 JS 实际渲染和 JBrowse 交互未在本地实测；已通过文件系统路径验证和线上 HTTP 200 检查覆盖。
+- 线上 JBrowse 的 track 实际加载和 peak 显示已在本日（2026-08-18）通过 Playwright 线上浏览器验证。
+
+## 2026-08-18（续）—— 文档 PR 清理与线上浏览器验收
+
+**分支：** `docs/bted-v0.2-handoff-v2` → `seu-yolo/main`
+**范围：** 清理冲突的 docs PR，完成线上真实浏览器验证；未修改科学数据。
+
+### 完成内容
+
+1. 确认 PR #3（`docs/bted-v0.2-handoff`）因包含已 squash 进 main 的代码提交而处于 `mergeable_state: dirty`。
+2. 从 `personal/main`（`f9b3205`）新建 docs-only 分支 `docs/bted-v0.2-handoff-v2`，仅保留 `docs/WORKLOG.md` 与 `docs/HANDOFF.md` 更新，并推送到个人仓库。
+3. 使用 Playwright 对线上站点进行真实浏览器验证：
+   - 首页标题、导航、统计数字正确（20 assemblies / 22 source tracks / 28,399 records）。
+   - `GCF_000739105.1` 中文 accession 页面显示 2 来源、2,848 记录、两篇论文、PRJEB31507、作者定义端点、BED/metadata 下载。
+   - JBrowse 加载 1 个共享参考 + 2 条独立来源 track（S1_007、S1_013），控制台无 error，网络请求无 404。
+   - `BATTER_S1_002` 页面为 `Metadata only` / `audit_only`，无 JBrowse 入口。
+   - `BATTER_S1_001` Rend-seq 页面保留 BigWig signal track 与候选端点 track。
+4. 本地测试与校验脚本全部 PASS（`test_bted_ingestion.py`、`validate-site.py`、`validate_jbrowse_release.py`、`validate_repo_layout.py`）。
+
+### 阻塞与待人工步骤
+
+- GitHub 连接器仅有只读权限，`gh` CLI token 失效，无法自动创建/合并 PR 或关闭 PR #3。
+- 需人工在浏览器中：关闭 PR #3，创建并合并 `docs/bted-v0.2-handoff-v2` → `main` 的 PR。
+
+### 验证
+
+- Playwright 线上验收：PASS（无 console error、无 404）。
+- `python -m unittest -v tests/test_bted_ingestion.py`：4/4 PASS。
+- `python scripts/validate-site.py site`：PASS。
+- `python scripts/validate-site.py .pages-preview`：PASS。
+- `python scripts/validate_jbrowse_release.py`：PASS。
+- `python scripts/validate_repo_layout.py`：PASS。
+
+### 参考链接
+
+- 线上站点：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/
+- PR #2（已合并）：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/pull/2
+- 冲突 PR #3（待关闭）：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/pull/3
+- 干净 docs 分支比较：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/compare/main...docs/bted-v0.2-handoff-v2
+- Actions 成功部署 run：`32054805656`
+
+
+
 ## 2026-08-17 —— accession 页面收敛为既有核心字段
 
 **分支：** `feature/research-user-dataset-context-v0.1`
