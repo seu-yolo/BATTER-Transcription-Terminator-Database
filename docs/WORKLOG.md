@@ -952,3 +952,44 @@ URL 已可访问。
 - 既有无参数 127-asset 回归继续由 importer/postgres 测试覆盖。
 - 对象尚未上传，也未做 HTTP 206、真实 PostgreSQL 或真实 JBrowse smoke test；当前清单
   只是确定性 inventory/import 中间层。
+
+## 2026-08-22 —— v0.3 GFF-derived genes：真实查询层物化
+
+**范围：** 仅把 tracked JBrowse reference GFF3/FAI 派生为可查询 genes 和必要的 assembly
+contigs；不修改 canonical v0.2 endpoint、canonical contig registry 或计算
+`endpoint_gene_context`，也没有上传对象或连接 PostgreSQL。
+
+### 完成内容
+
+1. `backend/importer/materialize.py` / `scripts/import_bted_v03.py` 支持可选
+   `--jbrowse-bundle-root`。只有同时提供 `--jbrowse-asset-inventory` 才启用 gene 导入；
+   inventory 中 19 个去重 `reference_gff3` 与对应 FAI 的 bundle path、size、SHA-256 均
+   经校验。GFF3 当前按已验证的 gene-only 格式读取，gene ID 为稳定全局
+   `<assembly_accession>:<original GFF ID>`，attributes JSON 保留原始字段（URL-decoded
+   供页面显示），gene_name 为 `gene` 优先、否则 `Name`。
+2. 当前真实 bundle 物化得到 95,437 genes、49 contigs、0
+   `endpoint_gene_context`；GCF_000008685.2 的两个 FAI-only endpoint registry 之外
+   contig 被补入派生 query layer。5 条环状 replicon unrolled 坐标超过线性 FAI 长度，
+   保留 GFF 原始 start/end，并以 `_bted_coordinate_note`/`_bted_contig_length` 记录
+   caveat；未裁剪坐标。
+3. `backend/importer/postgres.py` preflight 增加 genes natural-key/坐标/strand/asset
+   校验，context 继续强制为空；writer 在 assets 后按 batch 插入 genes，audit 在启用
+   gene 时核对 genes/context 数量。`backend/database/schema.sql` gene trigger 保留
+   assembly/contig 和 GFF3 asset/sha 检查，不把线性 FAI 上限用于环状 unrolled 坐标。
+4. 新增 `tests/test_bted_v03_genes.py`：fake preflight + assets-before-genes writer
+   顺序测试，以及本地 bundle 可用时核对 49/95,437/0 和 5 条 unrolled 坐标的真实 focused
+   test。无 bundle 的 CI 仍执行默认 47/0 路径及语法/结构检查。
+
+### 验证
+
+- 本地真实 materialization：`contigs=49`、`genes=95,437`、
+  `endpoint_gene_context=0`；`verify_bundle()` 和 `_preflight()` 均通过。
+- `python -m unittest -v tests/test_bted_v03_genes.py`：2/2 PASS（含本地真实 bundle）。
+- `python -m unittest -v tests/test_bted_v03_postgres.py`：13/13 PASS。
+- `git diff --check`：PASS。
+
+### 后续限制
+
+- gene 是 GFF-derived query layer，不替代 endpoint evidence，也不改变 canonical release。
+- endpoint_gene_context 仍需未来单独算法/审核任务；本轮不生成任何上下文结果。
+- 真实 PostgreSQL/远端对象/JBrowse 浏览器 smoke test 仍未执行。

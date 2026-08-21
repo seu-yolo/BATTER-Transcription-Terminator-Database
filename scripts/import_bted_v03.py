@@ -117,6 +117,14 @@ def build_parser() -> argparse.ArgumentParser:
             "to preserve the canonical 127-asset bundle"
         ),
     )
+    materialize.add_argument(
+        "--jbrowse-bundle-root",
+        default=None,
+        help=(
+            "local JBrowse bundle root containing the registered reference GFF3/FAI files; "
+            "gene import is enabled only together with --jbrowse-asset-inventory"
+        ),
+    )
     verify = subparsers.add_parser(
         "verify-bundle",
         help="只读验证 B1 JSONL bundle，不连接数据库",
@@ -170,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
                 asset_origin_base=args.asset_origin_base,
                 generated_at_utc=args.generated_at_utc,
                 jbrowse_asset_inventory=args.jbrowse_asset_inventory,
+                jbrowse_bundle_root=args.jbrowse_bundle_root,
             )
         except MaterializationError as exc:
             json.dump({"ok": False, "error": str(exc)}, sys.stderr, ensure_ascii=False)

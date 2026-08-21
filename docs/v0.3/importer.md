@@ -249,6 +249,43 @@ S1_002 仍为 `audit_only`：物化中保留 source/publication/assembly/accessi
 release checksum、reference-contig registry checksum、表行数与表 checksum、自然键模式、
 origin 计划状态和 unresolved；`write_mode` 始终为 `not_written`。
 
+### GFF-derived genes（可选查询层）
+
+默认 materialization 继续保持 `contigs=47`、`genes=0`。需要导入真实 GFF gene 查询层时，
+必须同时提供 tracked inventory 和本地 bundle root：
+
+```bash
+python3 scripts/import_bted_v03.py materialize \
+  --release-root data/public/v0.2.0 \
+  --output-dir /tmp/bted-v03-staging-with-genes \
+  --asset-origin-base https://example.test/assets \
+  --generated-at-utc 2026-08-22T00:00:00Z \
+  --jbrowse-asset-inventory data/registry/jbrowse_assets.v0.2.0.tsv \
+  --jbrowse-bundle-root /path/to/BTED-v0.2.0-jbrowse
+```
+
+`--jbrowse-bundle-root` 没有 inventory 时会被拒绝；只有 inventory 而没有 bundle root
+时仍只合并 browser assets，不读取 GFF，genes 保持零行。当前实现只支持已经核验的
+gene-only bgzip GFF3 与对应 FAI：对每个 assembly 校验 inventory `bundle_path` 的
+存在性、byte size、SHA-256，并要求 GFF/FAI contig 集一致。GFF3 inventory asset 会在
+`assets.jsonl` 中先注册，gene 行通过 `annotation_asset_id`/`annotation_sha256` 引用它。
+
+gene 的稳定 ID 是 `<assembly_accession>:<original GFF ID>`。`attributes_json` 保存
+GFF3 的 `ID`、`Name`、`gene`、`locus_tag`、`product` 及其它 attributes；标准 GFF3
+percent escapes 会 URL-decode 供页面显示，原始文件仍由 registered asset SHA-256 保真。
+`gene_name` 优先使用 `gene`，否则 `Name`；`locus_tag` 只取显式 `locus_tag`。gene 行
+通过 `assembly_id_ref` 与 {assembly_accession, contig_accession} 的 `contig_id_ref`
+连接自然键，不会修改 canonical endpoint contig registry。
+
+真实当前 bundle 的结果是 49 contigs、95,437 genes、0
+`endpoint_gene_context`。GCF_000008685.2 的 `NC_000957.1` 与 `NC_001904.1` 仅由
+FAI/GFF 派生并补入 gene query layer，canonical v0.2 registry 仍为 47 行。5 条环状
+replicon 的 GFF3 unrolled `end` 超过线性 FAI 长度；它们保留原始 start/end，并在
+`attributes_json` 增加 `_bted_coordinate_note` 与 `_bted_contig_length`，不裁剪坐标。
+这不是 endpoint evidence，也不计算任何 gene context。manifest 顶层记录
+`gene_count`/`endpoint_gene_context_count`，`gene_import` 记录 assembly、contig 和
+asset provenance。
+
 ## 测试
 
 ```bash
@@ -310,8 +347,14 @@ python3 scripts/import_bted_v03.py load-postgres \
 writer 的事务顺序为：
 
 `release_versions → import_runs → publications/assemblies → contigs → sources →
-source_accessions/samples → endpoints → source_annotations → assets → count audit →
+source_accessions/samples → endpoints → source_annotations → assets → genes → count audit →
 import_run=committed`
+
+当 `genes.jsonl` 非空时，writer 在 preflight 验证 assembly/contig natural refs、1-based
+start/end 顺序、`+/-` strand、GFF3 asset kind 和 SHA-256 后批量写入；assets 必须先于
+genes 进入数据库以满足 annotation asset 外键。`endpoint_gene_context.jsonl` 在本版本
+仍必须为空，count audit 会明确核对该零值。gene 是 GFF-derived 查询层，不改变 canonical
+endpoint 或其 evidence boundary。
 
 事务开始后设置 `SERIALIZABLE` 和 advisory transaction lock；endpoint/annotation 等大表
 按 `--batch-size` 使用参数化 `executemany`。任何异常都会 rollback，代码不包含

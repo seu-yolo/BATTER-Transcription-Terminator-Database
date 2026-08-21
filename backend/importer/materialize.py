@@ -13,6 +13,7 @@ keys so that a future writer can resolve foreign keys in a transaction.
 from __future__ import annotations
 
 import csv
+import gzip
 import hashlib
 import json
 import os
@@ -24,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from .canonical import (
     V02_ENDPOINT_COLUMNS,
@@ -312,6 +313,272 @@ def _portable_inventory_path(path: Path, repo_root: Path) -> str:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError:
         return path.name
+
+
+def _read_jbrowse_inventory_rows(inventory_path: Path) -> list[dict[str, str]]:
+    """Read the validated v0.2 browser inventory with its fixed schema."""
+
+    try:
+        with inventory_path.open(encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            if tuple(reader.fieldnames or ()) != JBROWSE_INVENTORY_COLUMNS:
+                raise MaterializationError("JBrowse asset inventory header does not match schema")
+            rows = list(reader)
+    except (OSError, UnicodeError, csv.Error) as exc:
+        raise MaterializationError(f"cannot read JBrowse asset inventory: {inventory_path}") from exc
+    if len(rows) != 105:
+        raise MaterializationError("JBrowse asset inventory must contain 105 v0.2.0 rows")
+    return rows
+
+
+def _bundle_file(bundle_root: Path, bundle_path: str, field: str) -> Path:
+    """Resolve one inventory bundle path without allowing path traversal."""
+
+    relative = Path(str(bundle_path).strip())
+    if not str(bundle_path).strip() or relative.is_absolute() or ".." in relative.parts:
+        raise MaterializationError(f"{field} is not a safe relative bundle path")
+    root = bundle_root.expanduser().resolve()
+    candidate = (root / relative).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise MaterializationError(f"{field} escapes the JBrowse bundle root") from exc
+    if not candidate.is_file():
+        raise MaterializationError(f"JBrowse bundle file is missing: {candidate}")
+    return candidate
+
+
+def _verify_bundle_asset(path: Path, row: Mapping[str, Any], field: str) -> None:
+    expected_sha = str(row.get("sha256", "")).strip()
+    expected_size = _int(row.get("byte_size"), f"{field} byte_size")
+    if path.stat().st_size != expected_size or sha256_file(path) != expected_sha:
+        raise MaterializationError(f"{field} checksum/size mismatch: {path}")
+
+
+def _read_fai_lengths(path: Path, assembly: str) -> dict[str, int]:
+    lengths: dict[str, int] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise MaterializationError(f"cannot read FAI for {assembly}: {path}") from exc
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) < 2 or not fields[0].strip():
+            raise MaterializationError(f"invalid FAI line {line_number} for {assembly}")
+        contig = fields[0].strip()
+        length = _int(fields[1], f"FAI length {assembly}/{contig}")
+        if length < 1 or contig in lengths:
+            raise MaterializationError(f"invalid/duplicate FAI contig {assembly}/{contig}")
+        lengths[contig] = length
+    if not lengths:
+        raise MaterializationError(f"FAI is empty for {assembly}: {path}")
+    return lengths
+
+
+def _parse_gff_attributes(value: str, context: str) -> dict[str, str]:
+    attributes: dict[str, str] = {}
+    for item in value.split(";"):
+        if not item:
+            continue
+        if "=" in item:
+            key, raw_value = item.split("=", 1)
+        else:
+            key, raw_value = item, ""
+        key = key.strip()
+        if not key or key in attributes:
+            raise MaterializationError(f"invalid/duplicate GFF3 attribute in {context}")
+        # Decode standard GFF3 percent escapes for API/page display.  The
+        # registered GFF3 asset checksum remains the lossless source record.
+        attributes[key] = unquote(raw_value)
+    if not attributes:
+        raise MaterializationError(f"GFF3 gene has no attributes: {context}")
+    return attributes
+
+
+def _build_gff_gene_tables(
+    tables: dict[str, list[dict[str, Any]]],
+    snapshot: Mapping[str, Any],
+    inventory_path: Path,
+    bundle_root: Path,
+) -> dict[str, Any]:
+    """Read the current gene-only GFF3/FAI browser assets into query tables."""
+
+    inventory_rows = _read_jbrowse_inventory_rows(inventory_path)
+    gff_rows: dict[str, dict[str, str]] = {}
+    fai_rows: dict[str, dict[str, str]] = {}
+    for row in inventory_rows:
+        assembly = str(row.get("assembly_accession", "")).strip()
+        role = str(row.get("asset_role", "")).strip()
+        if role == "reference_gff3":
+            if assembly in gff_rows:
+                raise MaterializationError(f"duplicate reference GFF3 inventory row: {assembly}")
+            gff_rows[assembly] = row
+        elif role == "reference_fai":
+            if assembly in fai_rows:
+                raise MaterializationError(f"duplicate reference FAI inventory row: {assembly}")
+            fai_rows[assembly] = row
+    if set(gff_rows) != set(fai_rows):
+        raise MaterializationError("reference GFF3/FAI assembly sets do not match")
+
+    assembly_keys = {str(row["assembly_accession"]) for row in tables["assemblies"]}
+    unknown_assemblies = sorted(set(gff_rows) - assembly_keys)
+    if unknown_assemblies:
+        raise MaterializationError(f"GFF3 inventory contains unknown assemblies: {unknown_assemblies}")
+    existing_contigs = {
+        (str(row["assembly_id_ref"]), str(row["contig_accession"])): row
+        for row in tables["contigs"]
+    }
+    canonical_contig_count = len(existing_contigs)
+    gene_rows: list[dict[str, Any]] = []
+    seen_gene_ids: set[str] = set()
+    assembly_summaries: list[dict[str, Any]] = []
+    for assembly in sorted(gff_rows):
+        gff_inventory = gff_rows[assembly]
+        fai_inventory = fai_rows[assembly]
+        gff_path = _bundle_file(
+            bundle_root,
+            str(gff_inventory.get("bundle_path", "")),
+            f"{assembly} GFF3 bundle_path",
+        )
+        fai_path = _bundle_file(
+            bundle_root,
+            str(fai_inventory.get("bundle_path", "")),
+            f"{assembly} FAI bundle_path",
+        )
+        _verify_bundle_asset(gff_path, gff_inventory, f"{assembly} GFF3 asset")
+        _verify_bundle_asset(fai_path, fai_inventory, f"{assembly} FAI asset")
+        fai_lengths = _read_fai_lengths(fai_path, assembly)
+        gff_contigs: set[str] = set()
+        assembly_gene_count = 0
+        try:
+            handle = gzip.open(gff_path, mode="rt", encoding="utf-8")
+        except OSError as exc:
+            raise MaterializationError(f"cannot open bgzip GFF3 for {assembly}: {gff_path}") from exc
+        try:
+            with handle:
+                for line_number, raw_line in enumerate(handle, start=1):
+                    line = raw_line.rstrip("\r\n")
+                    if not line or line.startswith("#"):
+                        continue
+                    fields = line.split("\t")
+                    context = f"{assembly} GFF3 line {line_number}"
+                    if len(fields) != 9:
+                        raise MaterializationError(f"{context} must have 9 columns")
+                    contig, _source, feature_type, start_raw, end_raw, _score, strand, _phase, raw_attributes = fields
+                    if feature_type != "gene":
+                        raise MaterializationError(f"{context} is not a gene feature")
+                    if contig not in fai_lengths:
+                        raise MaterializationError(f"{context} references contig absent from FAI: {contig}")
+                    start = _int(start_raw, f"{context} start")
+                    end = _int(end_raw, f"{context} end")
+                    if start < 1 or end < start:
+                        raise MaterializationError(f"{context} has invalid 1-based coordinates")
+                    if strand not in {"+", "-"}:
+                        raise MaterializationError(f"{context} has invalid strand: {strand!r}")
+                    attributes = _parse_gff_attributes(raw_attributes, context)
+                    if end > fai_lengths[contig]:
+                        # A small number of the current NCBI circular-replicon
+                        # records use an unrolled coordinate beyond the linear
+                        # FAI boundary.  Preserve that source coordinate and
+                        # make the display/query caveat explicit.
+                        attributes["_bted_coordinate_note"] = (
+                            "GFF3 unrolled circular-replicon coordinate exceeds linear FAI length"
+                        )
+                        attributes["_bted_contig_length"] = str(fai_lengths[contig])
+                    original_id = attributes.get("ID", "").strip()
+                    if not original_id:
+                        raise MaterializationError(f"{context} is missing ID")
+                    gene_id = f"{assembly}:{original_id}"
+                    if gene_id in seen_gene_ids:
+                        raise MaterializationError(f"duplicate global gene_id: {gene_id}")
+                    seen_gene_ids.add(gene_id)
+                    existing_contig = existing_contigs.get((assembly, contig))
+                    if existing_contig is not None and int(existing_contig["length_bp"]) != fai_lengths[contig]:
+                        raise MaterializationError(f"FAI length conflicts with canonical contig: {assembly}/{contig}")
+                    gene_rows.append(
+                        {
+                            "release_version": str(snapshot["release"].get("release_version", "")),
+                            "assembly_id_ref": assembly,
+                            "contig_id_ref": {
+                                "assembly_accession": assembly,
+                                "contig_accession": contig,
+                            },
+                            "gene_id": gene_id,
+                            "locus_tag": attributes.get("locus_tag") or None,
+                            "gene_name": attributes.get("gene") or attributes.get("Name") or None,
+                            "feature_type": feature_type,
+                            "start_1based": start,
+                            "end_1based": end,
+                            "strand": strand,
+                            "annotation_asset_id": str(gff_inventory["asset_id"]),
+                            "annotation_sha256": str(gff_inventory["sha256"]).strip(),
+                            "attributes_json": attributes,
+                        }
+                    )
+                    gff_contigs.add(contig)
+                    assembly_gene_count += 1
+        except (OSError, UnicodeError) as exc:
+            raise MaterializationError(f"cannot read bgzip GFF3 for {assembly}: {gff_path}") from exc
+        if gff_contigs != set(fai_lengths):
+            raise MaterializationError(f"GFF3/FAI contig sets do not match for {assembly}")
+        for contig, length_bp in sorted(fai_lengths.items()):
+            key = (assembly, contig)
+            if key in existing_contigs:
+                continue
+            new_contig = {
+                "assembly_id_ref": assembly,
+                "assembly_accession": assembly,
+                "contig_accession": contig,
+                "contig_name": contig,
+                "length_bp": length_bp,
+                "sequence_sha256": None,
+                "provenance_json": {
+                    "source": "jbrowse_reference_fai",
+                    "assembly_accession": assembly,
+                    "contig_accession": contig,
+                    "fai_asset_id": str(fai_inventory["asset_id"]),
+                    "fai_sha256": str(fai_inventory["sha256"]).strip(),
+                    "bundle_path": str(fai_inventory["bundle_path"]),
+                },
+            }
+            tables["contigs"].append(new_contig)
+            existing_contigs[key] = new_contig
+        assembly_summaries.append(
+            {
+                "assembly_accession": assembly,
+                "gff3_asset_id": str(gff_inventory["asset_id"]),
+                "gff3_sha256": str(gff_inventory["sha256"]).strip(),
+                "fai_asset_id": str(fai_inventory["asset_id"]),
+                "fai_sha256": str(fai_inventory["sha256"]).strip(),
+                "contig_count": len(fai_lengths),
+                "gene_count": assembly_gene_count,
+            }
+        )
+    tables["contigs"].sort(
+        key=lambda row: (str(row["assembly_accession"]), str(row["contig_accession"]))
+    )
+    gene_rows.sort(
+        key=lambda row: (
+            str(row["assembly_id_ref"]),
+            str(row["contig_id_ref"]["contig_accession"]),
+            int(row["start_1based"]),
+            str(row["gene_id"]),
+        )
+    )
+    tables["genes"] = gene_rows
+    return {
+        "enabled": True,
+        "source": "registered JBrowse reference_gff3 assets",
+        "assembly_count": len(assembly_summaries),
+        "assemblies": assembly_summaries,
+        "gene_count": len(gene_rows),
+        "contig_count": len(tables["contigs"]),
+        "canonical_contig_count": canonical_contig_count,
+        "endpoint_gene_context_count": 0,
+        "bundle_root": _portable_inventory_path(bundle_root, Path(str(snapshot["repo_root"]))),
+    }
 
 
 def _merge_jbrowse_asset_inventory(
@@ -1124,6 +1391,7 @@ def materialize_release(
     asset_origin_base: str,
     generated_at_utc: str | None = None,
     jbrowse_asset_inventory: str | Path | None = None,
+    jbrowse_bundle_root: str | Path | None = None,
 ) -> MaterializationResult:
     """Validate and materialize a release into a deterministic JSONL bundle.
 
@@ -1133,6 +1401,10 @@ def materialize_release(
     and no remote object is claimed to exist.
     """
 
+    if jbrowse_bundle_root is not None and jbrowse_asset_inventory is None:
+        raise MaterializationError(
+            "--jbrowse-bundle-root requires --jbrowse-asset-inventory"
+        )
     origin_base, origin_host = _validate_origin_base(asset_origin_base)
     generated_at = _utc_timestamp(generated_at_utc)
     output_path = Path(output_dir).expanduser().resolve()
@@ -1155,17 +1427,40 @@ def materialize_release(
         raise MaterializationError(str(exc)) from exc
     tables = _build_tables(snapshot, origin_base, generated_at)
     canonical_asset_count = len(tables["assets"])
+    canonical_contig_count = len(tables["contigs"])
     inventory_summary: dict[str, Any] | None = None
+    gene_import_summary: dict[str, Any] = {
+        "enabled": False,
+        "gene_count": 0,
+        "contig_count": len(tables["contigs"]),
+        "canonical_contig_count": len(tables["contigs"]),
+        "endpoint_gene_context_count": 0,
+    }
+    inventory_candidate: Path | None = None
     if jbrowse_asset_inventory is not None:
         candidate = Path(jbrowse_asset_inventory).expanduser()
         if not candidate.is_absolute():
             candidate = Path(str(snapshot["repo_root"])) / candidate
+        inventory_candidate = candidate.resolve()
         inventory_summary = _merge_jbrowse_asset_inventory(
             tables,
             snapshot,
-            candidate.resolve(),
+            inventory_candidate,
             origin_base,
         )
+        if jbrowse_bundle_root is not None:
+            bundle_root = Path(jbrowse_bundle_root).expanduser()
+            if not bundle_root.is_absolute():
+                bundle_root = Path(str(snapshot["repo_root"])) / bundle_root
+            bundle_root = bundle_root.resolve()
+            if not bundle_root.is_dir():
+                raise MaterializationError(f"JBrowse bundle root is not a directory: {bundle_root}")
+            gene_import_summary = _build_gff_gene_tables(
+                tables,
+                snapshot,
+                inventory_candidate,
+                bundle_root,
+            )
     # Explicit row-count/closure assertions catch a malformed future release
     # before any bundle bytes are exposed.
     source_ids = snapshot["source_ids"]
@@ -1178,6 +1473,8 @@ def materialize_release(
         raise MaterializationError(f"endpoint count changed between validation and materialization: {len(tables['endpoints'])} != {expected_endpoints}")
     if canonical_asset_count != expected_assets:
         raise MaterializationError(f"canonical asset count changed between validation and materialization: {canonical_asset_count} != {expected_assets}")
+    if gene_import_summary["canonical_contig_count"] != canonical_contig_count:
+        raise MaterializationError("canonical contig count changed between validation and materialization")
     if inventory_summary is not None and len(tables["assets"]) != int(inventory_summary["materialized_asset_count"]):
         raise MaterializationError("JBrowse inventory materialized asset count mismatch")
     if any(row["source_id_ref"] == "BATTER_S1_002" for row in tables["endpoints"]):
@@ -1223,6 +1520,10 @@ def materialize_release(
             report.summary.get("source_annotation_record_count", 0)
         ),
         "source_annotation_materialized_row_count": len(tables["source_annotations"]),
+        "contig_count": len(tables["contigs"]),
+        "gene_count": len(tables["genes"]),
+        "endpoint_gene_context_count": len(tables["endpoint_gene_context"]),
+        "gene_import": gene_import_summary,
         "annotation_field_provenance": annotation_field_provenance,
         "published_source_count": sum(
             row["release_status"] in SOURCE_STATUS_PUBLISHED for row in tables["sources"]

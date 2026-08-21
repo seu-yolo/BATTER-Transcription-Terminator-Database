@@ -248,7 +248,7 @@ TABLE_HELPERS: dict[str, frozenset[str]] = {
     "samples": frozenset({"source_id_ref"}),
     "endpoints": frozenset({"source_id_ref", "source_pk_ref", "contig_id_ref", "sample_id_ref"}),
     "source_annotations": frozenset({"source_id_ref"}),
-    "genes": frozenset(),
+    "genes": frozenset({"assembly_id_ref", "contig_id_ref"}),
     "endpoint_gene_context": frozenset(),
     "assets": frozenset({"source_id_ref", "assembly_id_ref"}),
 }
@@ -270,6 +270,7 @@ TABLE_REQUIRED["endpoints"] = frozenset(TABLE_COLUMNS["endpoints"]) - {
     "sample_pk",
 }
 TABLE_REQUIRED["source_annotations"] = frozenset(TABLE_COLUMNS["source_annotations"]) - {"source_pk"}
+TABLE_REQUIRED["genes"] = frozenset(TABLE_COLUMNS["genes"]) - {"assembly_id", "contig_id"}
 TABLE_REQUIRED["assets"] = frozenset(TABLE_COLUMNS["assets"]) - {"source_pk", "assembly_id"}
 
 ADVISORY_LOCK_KEY = int.from_bytes(hashlib.sha256(b"BTED:v0.3:postgres-writer").digest()[:8], "big", signed=True)
@@ -315,6 +316,7 @@ class PreflightState:
     endpoint_counts: Counter[str]
     annotation_keys: set[tuple[str, str, str, str, int]]
     annotation_counts: Counter[str]
+    genes: dict[tuple[str, str, str], dict[str, Any]]
     assets: dict[str, dict[str, Any]]
 
 
@@ -500,6 +502,27 @@ def verify_bundle(bundle_dir: str | Path) -> BundleVerification:
         or annotation_count != int(table_metadata["source_annotations"]["row_count"])
     ):
         raise PostgresWriterError("manifest source annotation count does not match table")
+    gene_count = manifest.get("gene_count", 0)
+    context_count = manifest.get("endpoint_gene_context_count", 0)
+    contig_count = manifest.get("contig_count", int(table_metadata["contigs"]["row_count"]))
+    if (
+        isinstance(contig_count, bool)
+        or not isinstance(contig_count, int)
+        or contig_count != int(table_metadata["contigs"]["row_count"])
+    ):
+        raise PostgresWriterError("manifest contig count does not match contigs table")
+    if (
+        isinstance(gene_count, bool)
+        or not isinstance(gene_count, int)
+        or gene_count != int(table_metadata["genes"]["row_count"])
+    ):
+        raise PostgresWriterError("manifest gene count does not match genes table")
+    if (
+        isinstance(context_count, bool)
+        or not isinstance(context_count, int)
+        or context_count != int(table_metadata["endpoint_gene_context"]["row_count"])
+    ):
+        raise PostgresWriterError("manifest endpoint_gene_context count does not match table")
     return BundleVerification(root, manifest, table_files, table_metadata)
 
 
@@ -796,6 +819,59 @@ def _preflight(verification: BundleVerification) -> PreflightState:
             )
         assets[asset_id] = row
 
+    genes: dict[tuple[str, str, str], dict[str, Any]] = {}
+    gene_contigs: set[tuple[str, str]] = set()
+    seen_gene_ids: set[str] = set()
+    for number, row in enumerate(_iter_table(verification, "genes"), start=1):
+        if row["release_version"] != release_version:
+            raise PostgresWriterError(f"genes:{number} release_version mismatch")
+        assembly = str(row["assembly_id_ref"])
+        if assembly not in assemblies:
+            raise PostgresWriterError(f"genes:{number} unknown assembly")
+        contig_ref = _require_mapping(row["contig_id_ref"], f"genes:{number}.contig_id_ref")
+        if set(contig_ref) != {"assembly_accession", "contig_accession"}:
+            raise PostgresWriterError(f"genes:{number} contig_id_ref keys mismatch")
+        contig_key = (
+            str(contig_ref["assembly_accession"]),
+            str(contig_ref["contig_accession"]),
+        )
+        if contig_key not in contigs:
+            raise PostgresWriterError(f"genes:{number} unknown contig")
+        if contig_key[0] != assembly:
+            raise PostgresWriterError(f"genes:{number} assembly/contig mismatch")
+        attributes = _require_mapping(row["attributes_json"], f"genes:{number}.attributes_json")
+        original_id = str(attributes.get("ID", "")).strip()
+        gene_id = str(row["gene_id"])
+        if not original_id or gene_id != f"{assembly}:{original_id}":
+            raise PostgresWriterError(f"genes:{number} gene_id is not stable assembly:original-ID")
+        if gene_id in seen_gene_ids:
+            raise PostgresWriterError(f"duplicate global gene_id: {gene_id}")
+        seen_gene_ids.add(gene_id)
+        if str(row["feature_type"]) != "gene":
+            raise PostgresWriterError(f"genes:{number} feature_type must be gene")
+        start = _int(row["start_1based"], f"genes:{number}.start_1based")
+        end = _int(row["end_1based"], f"genes:{number}.end_1based")
+        if start < 1 or end < start:
+            raise PostgresWriterError(f"genes:{number} coordinates are outside contig")
+        if row["strand"] not in {"+", "-"}:
+            raise PostgresWriterError(f"genes:{number} invalid strand")
+        annotation_asset_id = str(row["annotation_asset_id"])
+        annotation_asset = assets.get(annotation_asset_id)
+        if annotation_asset is None:
+            raise PostgresWriterError(f"genes:{number} annotation asset is not registered")
+        if annotation_asset["asset_kind"] != "gff3":
+            raise PostgresWriterError(f"genes:{number} annotation asset must be gff3")
+        annotation_sha = str(row["annotation_sha256"])
+        if not SHA256_RE.fullmatch(annotation_sha):
+            raise PostgresWriterError(f"genes:{number} invalid annotation_sha256")
+        if annotation_sha != str(annotation_asset["sha256"]):
+            raise PostgresWriterError(f"genes:{number} annotation checksum mismatch")
+        key = (assembly, contig_key[1], gene_id)
+        if key in genes:
+            raise PostgresWriterError(f"duplicate gene natural key: {key}")
+        genes[key] = row
+        gene_contigs.add(contig_key)
+
     for source_id, source in sources.items():
         if source["release_status"] != "published_standardized" and endpoint_counts[source_id]:
             raise PostgresWriterError(f"non-published source has endpoint rows: {source_id}")
@@ -807,8 +883,10 @@ def _preflight(verification: BundleVerification) -> PreflightState:
         assembly_sources = assemblies[str(source["assembly_id_ref"])]["source_ids"]
         if assembly_sources != expected_assembly_sources:
             raise PostgresWriterError(f"assembly source_ids closure failed: {source['assembly_id_ref']}")
-    if endpoint_contigs != set(contigs):
-        raise PostgresWriterError("contig natural-key closure does not match endpoint references")
+    if not endpoint_contigs.issubset(set(contigs)):
+        raise PostgresWriterError("endpoint contig references contain unknown contigs")
+    if set(contigs) != endpoint_contigs | gene_contigs:
+        raise PostgresWriterError("contig natural-key closure does not match endpoint/gene references")
     if endpoint_samples != set(samples):
         raise PostgresWriterError("sample natural-key closure does not match endpoint references")
     for source_id, sample_id in samples:
@@ -817,9 +895,8 @@ def _preflight(verification: BundleVerification) -> PreflightState:
     if "BATTER_S1_002" in sources:
         if endpoint_counts["BATTER_S1_002"] or annotation_counts["BATTER_S1_002"]:
             raise PostgresWriterError("BATTER_S1_002 audit_only row boundary violated")
-    for table in ("genes", "endpoint_gene_context"):
-        if any(_iter_table(verification, table)):
-            raise PostgresWriterError(f"{table} must be empty for this B1 release")
+    if any(_iter_table(verification, "endpoint_gene_context")):
+        raise PostgresWriterError("endpoint_gene_context must be empty for this B1 release")
     return PreflightState(
         release_version,
         release_row,
@@ -834,6 +911,7 @@ def _preflight(verification: BundleVerification) -> PreflightState:
         endpoint_counts,
         annotation_keys,
         annotation_counts,
+        genes,
         assets,
     )
 
@@ -1107,6 +1185,51 @@ def _load_assets(cursor: Any, verification: BundleVerification, source_ids: Mapp
         cursor.executemany(sql, batch)
 
 
+def _load_genes(
+    cursor: Any,
+    verification: BundleVerification,
+    assembly_ids: Mapping[str, int],
+    contig_ids: Mapping[tuple[str, str], int],
+    batch_size: int,
+) -> None:
+    sql = (
+        "INSERT INTO genes (release_version, assembly_id, contig_id, gene_id, "
+        "locus_tag, gene_name, feature_type, start_1based, end_1based, strand, "
+        "annotation_asset_id, annotation_sha256, attributes_json) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)"
+    )
+    batch: list[tuple[Any, ...]] = []
+    for row in _iter_table(verification, "genes"):
+        contig_ref = row["contig_id_ref"]
+        assembly = str(row["assembly_id_ref"])
+        contig_key = (
+            str(contig_ref["assembly_accession"]),
+            str(contig_ref["contig_accession"]),
+        )
+        batch.append(
+            (
+                row["release_version"],
+                assembly_ids[assembly],
+                contig_ids[contig_key],
+                row["gene_id"],
+                row["locus_tag"],
+                row["gene_name"],
+                row["feature_type"],
+                row["start_1based"],
+                row["end_1based"],
+                row["strand"],
+                row["annotation_asset_id"],
+                row["annotation_sha256"],
+                _json_value(row["attributes_json"], "gene attributes_json"),
+            )
+        )
+        if len(batch) >= batch_size:
+            cursor.executemany(sql, batch)
+            batch = []
+    if batch:
+        cursor.executemany(sql, batch)
+
+
 def _load_run_and_release(
     cursor: Any,
     state: PreflightState,
@@ -1150,6 +1273,12 @@ def _audit_counts(cursor: Any, state: PreflightState, release_version: str) -> d
         "source_annotations": len(state.annotation_keys),
         "assets": len(state.assets),
     }
+    # Keep the legacy result shape for the canonical no-gene bundle.  Once
+    # GFF-derived genes are present, audit both the gene count and the
+    # intentionally empty context table.
+    if state.genes:
+        expected["genes"] = len(state.genes)
+        expected["endpoint_gene_context"] = 0
     actual: dict[str, int] = {}
     for table in expected:
         row = _one(cursor, f"SELECT COUNT(*) FROM {table} WHERE release_version = %s", (release_version,))
@@ -1230,6 +1359,7 @@ def load_bundle(
             _load_endpoints(cursor, verification, source_ids, contig_ids, sample_ids, batch_size)
             _load_annotations(cursor, verification, source_ids, batch_size)
             _load_assets(cursor, verification, source_ids, assembly_ids, batch_size)
+            _load_genes(cursor, verification, assembly_ids, contig_ids, batch_size)
             counts = _audit_counts(cursor, state, verification.release_version)
             updated = cursor.execute(
                 "UPDATE import_runs SET run_status = %s, finished_at = CURRENT_TIMESTAMP, committed_at = CURRENT_TIMESTAMP WHERE import_run_id = %s AND run_status = %s",

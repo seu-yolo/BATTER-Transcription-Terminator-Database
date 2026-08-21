@@ -447,23 +447,18 @@ CREATE FUNCTION bted_guard_gene_annotation() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_contig_length BIGINT;
     v_asset_sha256 TEXT;
     v_asset_kind TEXT;
 BEGIN
-    SELECT c.length_bp
-      INTO v_contig_length
+    -- A circular-replicon gene end may exceed the linear FAI length; the
+    -- gene end is validated for ordering in genes_coordinate_ck and retained.
+    PERFORM 1
       FROM contigs AS c
      WHERE c.contig_id = NEW.contig_id
        AND c.assembly_id = NEW.assembly_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'gene contig does not belong to gene assembly';
     END IF;
-    IF NEW.end_1based > v_contig_length THEN
-        RAISE EXCEPTION 'gene end % exceeds contig length %',
-            NEW.end_1based, v_contig_length;
-    END IF;
-
     SELECT a.sha256, a.asset_kind
       INTO v_asset_sha256, v_asset_kind
       FROM assets AS a

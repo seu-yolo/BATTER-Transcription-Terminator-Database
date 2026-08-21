@@ -421,3 +421,27 @@ origin URL 使用 inventory 的 `object_path`，但状态仍是 `planned_not_ver
 `/private/tmp/bted-v03-api-venv` 完成全量 107/107 PASS、无 skip（仅有 Starlette
 `TestClient` deprecation warning）。211-asset bundle 已通过离线 `verify_bundle()`。
 尚未上传资产或完成远端/数据库/JBrowse smoke test。
+
+## 2026-08-22 v0.3 GFF-derived gene query layer
+
+本轮在不改写 canonical v0.2 endpoint/contig registry 的前提下，增加可选真实 gene
+物化。`materialize` 新增 `--jbrowse-bundle-root`；它只有和 tracked
+`--jbrowse-asset-inventory` 同时提供时才启用 GFF3/FAI 读取。19 个去重
+`reference_gff3`/`reference_fai` asset 通过 inventory 的 `bundle_path`、byte size 和
+SHA-256 校验后读取；gene ID 固定为
+`<assembly_accession>:<original GFF ID>`，attributes JSON 保留（页面显示用 URL-decoded
+值）`ID`/`Name`/`gene`/`locus_tag`/其它原始属性，gene_name 优先 `gene` 再 `Name`。
+
+真实 v0.2 bundle 的核验结果为 49 contigs、95,437 genes；GCF_000008685.2 的
+`NC_000957.1` 和 `NC_001904.1` 仅作为 GFF/FAI 派生 contig 补入，canonical registry
+仍为 47 行。5 条环状 replicon 的 GFF3 unrolled end 超过线性 FAI 长度，保留原始
+start/end，并在 attributes JSON 写入 `_bted_coordinate_note` 与
+`_bted_contig_length`；数据库 gene check 仍验证 start/end 顺序、strand、assembly/contig
+外键和 registered GFF3 asset/sha，不把这类坐标裁短。`endpoint_gene_context` 明确仍为
+0，未计算任何上下文关系。
+
+PostgreSQL preflight 接受非空 genes，使用 assembly+contig natural refs 校验后批量写入；
+assets 在 genes 前写入以满足 annotation asset FK。无 bundle 参数的默认物化仍为 47
+contigs/0 genes。新增 focused real-count（本地有 v0.2 bundle 时）与 fake
+preflight/load-order tests；CI 没有本地大 bundle 时 real-count test 会 skip，但生成器
+和默认路径仍会执行。
