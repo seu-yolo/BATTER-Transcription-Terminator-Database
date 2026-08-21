@@ -32,6 +32,7 @@ const api = read("lib/api.ts");
 const config = read("next.config.mjs");
 const source = read("app/sources/[sourceId]/page.tsx");
 const explore = read("app/explore/page.tsx");
+const endpoint = read("app/endpoints/[endId]/page.tsx");
 const genes = read("app/genes/page.tsx");
 const gene = read("app/genes/[geneId]/page.tsx");
 const assertions = [
@@ -44,8 +45,19 @@ const assertions = [
   [config, "localhost", "rewrite must not hard-code localhost"],
   [source, "Metadata audit only", "audit-only source boundary is visible"],
   [source, "Download endpoint table", "source download entry exists"],
-  [explore, "Filter records", "endpoint filters are server-side"],
-  [explore, "Assembly view", "endpoint context entry exists"],
+  [explore, "Filter records", "endpoint filters use the API"],
+  [explore, "View record", "endpoint record context entry exists"],
+  [explore, "Assembly details", "endpoint assembly details entry exists"],
+  [explore, "useEffect", "explore updates client-side"],
+  [explore, "pushState", "explore filters remain shareable in URL"],
+  [explore, "Download current results", "explore exposes filtered downloads"],
+  [explore, "position_min", "explore exposes position filters"],
+  [explore, "Loading endpoint records", "explore exposes loading state"],
+  [explore, "Retry", "explore exposes retry state"],
+  [explore, "No endpoint records match", "explore exposes empty state"],
+  [endpoint, "getAssembly", "endpoint detail loads assembly browser availability"],
+  [endpoint, "Open JBrowse (±500 bp)", "endpoint detail exposes a located browser link"],
+  [endpoint, "JBrowse unavailable", "endpoint detail explains missing browser availability"],
   [api, "getGenes", "API wrapper includes gene list"],
   [genes, "Filter genes", "gene list filters are server-side"],
   [genes, "Assembly context", "gene list provides assembly context"],

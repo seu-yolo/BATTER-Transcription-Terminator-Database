@@ -267,7 +267,8 @@ clusters、Rfam 命中或推测的终止功能；`endpoint_gene_context` 尚未�
 
 - `release_version`（默认 current published）；
 - `source_id`（可重复参数，要求同一 release）；
-- `assembly_accession`、`contig_accession`、`evidence_class`、`strand`；
+- `assembly_accession`、`contig_accession`、`gene_or_locus`、`evidence_class`、`strand`、
+  `position_min`、`position_max`；这些过滤沿用 endpoint 查询层的 1-based 坐标语义；
 - `format=tsv`（默认，含 24 列）或 `format=bed6`（1-based→0-based 单碱 BED6）；
 - `include_annotations=false|true`：仅在许可允许且显式为 true 时附加
   `source_annotations`，预测字段必须带 `prediction_annotation` 属性。

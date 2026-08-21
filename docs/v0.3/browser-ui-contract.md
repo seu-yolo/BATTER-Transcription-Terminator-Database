@@ -56,7 +56,18 @@ record、endpoint download 或 JBrowse deep link；不能用“暂无数据”�
 永远分开渲染；跨 contig 的“最近基因”或合并标签不允许。gene clusters、Rfam 不是
 本契约的轨道。
 
-## 4. Endpoint 轨道的缩放语义
+## 4. Endpoint explorer 的交互契约
+
+`/explore` 是 client-side filter view：source、assembly、contig、gene/locus、strand、
+evidence 和 1-based position filters 在页面内请求 `GET /api/v1/endpoints` 更新结果，当前
+过滤条件和 page 保留在 URL query 中，可直接分享或用浏览器前进/后退恢复。列表必须清楚
+显示 loading、error、empty states；分页只更新当前 view，不整页导航。`Download current
+results` 必须将当前过滤条件传给 `/api/v1/downloads/endpoints`，分别提供 TSV 与 BED6；BED6
+仍为 `position - 1` 到 `position` 的坐标投影。Explore 表的 context 链接只标为 `View record`
+或 `Assembly details`；实际带 `loc=contig:(position-500)-(position+500)` 的 JBrowse deep link
+由 endpoint detail 在 assembly browser 可用时生成，否则明确显示 `JBrowse unavailable`。
+
+## 5. Endpoint 轨道的缩放语义
 
 端点从远到近按以下顺序表达，避免在全基因组视图堆叠几万条文字：
 
@@ -69,7 +80,7 @@ record、endpoint download 或 JBrowse deep link；不能用“暂无数据”�
 `▲`/`▼` 表达 strand/端点方向，不等于“终止子功能验证”。密度聚合必须只在同一
 release、assembly、contig、strand 和 evidence 过滤条件内计算；不得跨 contig 去重。
 
-## 5. Raw plus/minus BigWig
+## 6. Raw plus/minus BigWig
 
 - raw plus/minus BigWig 轨道保留实验信号的正值；正负链由独立 track、颜色或上下布局
   表达，**不得为了镜像显示而把 raw signal 归一化、取负或改写文件**；
@@ -83,7 +94,7 @@ release、assembly、contig、strand 和 evidence 过滤条件内计算；不得
   `author_called_endpoint`、`curated_record` 的证据层，不显示 prediction-only 或不可
   拆分 mixed-evidence 轨道。
 
-## 6. Reference/GFF3 资产
+## 7. Reference/GFF3 资产
 
 浏览器配置同时区分并可追溯：
 
@@ -99,7 +110,7 @@ release、assembly、contig、strand 和 evidence 过滤条件内计算；不得
 轨道点击后的 feature detail 必须能回到 GFF3/TBI asset provenance。S1_002 不创建公开
    endpoint 或浏览器轨道；audit metadata 仍可在 source detail 显示。
 
-## 7. 与证据边界的关系
+## 8. 与证据边界的关系
 
 UI 是查询层的呈现，不是新的生物学推断层：
 
@@ -109,7 +120,7 @@ UI 是查询层的呈现，不是新的生物学推断层：
 - 点击、缩放、密度聚合和 display transform 都必须保留 release、source、sample、
   contig、strand、evidence 和 provenance。
 
-## 8. 验收清单
+## 9. 验收清单
 
 实现浏览器/UI 时至少验证：
 

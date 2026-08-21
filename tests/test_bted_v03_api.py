@@ -223,7 +223,14 @@ class FakeRepository:
             raise RepositoryNotFound(contig_accession)
 
     def iter_endpoint_rows(self, release: ReleaseContext, filters: Mapping[str, Any]):
-        for row in self.endpoints:
+        rows = list(self.endpoints)
+        if filters.get("gene_or_locus"):
+            rows = [row for row in rows if row["associated_gene_or_locus"] == filters["gene_or_locus"]]
+        if filters.get("position_min") is not None:
+            rows = [row for row in rows if row["biological_coordinate_1based"] >= filters["position_min"]]
+        if filters.get("position_max") is not None:
+            rows = [row for row in rows if row["biological_coordinate_1based"] <= filters["position_max"]]
+        for row in rows:
             yield row
 
 
@@ -340,6 +347,12 @@ class TestBtedV03ApiService(unittest.TestCase):
         self.assertIn("-1.2", lines[1])
         bed = self.service.download_endpoints(None, filters={"source_ids": ["BATTER_S1_007"]}, output_format="bed6")
         self.assertEqual(lines := list(bed.body)[1].rstrip("\n").split("\t"), [CONTIG, "67367", "67368", END_ID, "0", "+"])
+        filtered = self.service.download_endpoints(
+            None,
+            filters={"gene_or_locus": "SLIV_00320", "position_min": 67368, "position_max": 67368},
+            output_format="tsv",
+        )
+        self.assertEqual(len(list(filtered.body)), 2)
 
     def test_audit_only_source_cannot_be_download_filter(self) -> None:
         with self.assertRaises(ApiError) as error:
@@ -504,6 +517,12 @@ class TestBtedV03FastApiRuntime(unittest.TestCase):
             set(V02_ENDPOINT_COLUMNS),
             set(endpoint_response.json()["data"][0]) - {"provenance"},
         )
+
+        filtered_download = client.get(
+            "/api/v1/downloads/endpoints?gene_or_locus=SLIV_00320&position_min=67368&position_max=67368"
+        )
+        self.assertEqual(filtered_download.status_code, 200)
+        self.assertIn(END_ID, filtered_download.text)
 
         gene_response = client.get("/api/v1/genes?locus_tag=SLIV_00320")
         self.assertEqual(gene_response.status_code, 200)

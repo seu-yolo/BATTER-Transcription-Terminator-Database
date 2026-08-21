@@ -1079,6 +1079,17 @@ bundle checksum 会确定性变化，表行数仍保持默认 127、inventory �
 preflight 同步要求 manifest origin base/host 有效，并拒绝 origin URL 与 logical path
 不一致的 bundle。
 
+## 2026-08-22 —— v0.3 client-side endpoint explorer
+
+`/explore` 改为 client-side 查询视图：过滤条件和页码保留在 URL，可在页面内更新、用浏览器
+前进/后退恢复，并显示 loading/error/empty 状态。当前过滤条件可分别下载 TSV 与 BED6；
+downloads endpoint 同步接收 `gene_or_locus`、`position_min`、`position_max`，沿用既有
+endpoint 过滤和 1-based 坐标语义。未改变 canonical 数据或 endpoint_gene_context。
+
+Endpoint detail 现在按 assembly browser availability 生成真实 `loc` deep link（±500 bp）；
+无公开 JBrowse 时明确显示 unavailable。Explore 表仅提供 `View record`/`Assembly details`
+链接，不再把 assembly hash 伪称为已定位浏览器入口。
+
 ## 2026-08-22 —— v0.3 gene query 用户入口
 
 assembly list/detail 现在返回同一 release 的 `gene_count`；新增 `/genes` 前端目录，调用
