@@ -366,3 +366,17 @@ factory，默认运行时才创建 httpx client，便于离线 MockTransport 测
 test。下一步如要上线，应在隔离环境安装依赖，验证真实
 `assets` 登记的 HTTPS host、上游 Content-Range/长度和部署反向代理行为，再进行 Pages/API
 部署，不要把离线 MockTransport 结果写成远端可用性证明。
+
+## D1 前端接手说明（2026-08-22）
+
+新增独立目录 `frontend/`，不替换 v0.2 site。它是 English-only Next.js App Router 科研用户
+界面，消费 C1/C2 的 `/api/v1/*` 只读接口：首页提供动态统计与 accession/augmentation
+入口；source、assembly、endpoint 详情和 `/explore` 筛选表；`/augmentation` 来源级信息。
+同一 assembly 的多个 source 保持独立，audit-only source 没有 endpoint 下载或 JBrowse 按钮。
+
+服务端 API origin 由 `BTED_API_ORIGIN` 提供，浏览器使用同源 `/api/v1`，rewrite 不含 localhost；
+配置和运行说明在 `frontend/README.md`。本轮执行依赖无关的
+`node frontend/scripts/check-contract.mjs`（PASS），并在已有 Node 依赖环境执行
+`pnpm run build`（PASS：编译、类型检查和静态页面生成均成功）；没有执行真实浏览器
+smoke test、API/数据库或部署 smoke test。下一步将 `BTED_API_ORIGIN` 指向 C1/C2 API 后做
+浏览器验收，再决定 Pages 或带服务端运行时的部署方式；不要把 API 凭据写入仓库。

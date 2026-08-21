@@ -857,3 +857,30 @@ PostgreSQL、没有访问真实远端对象、没有上传 Hugging Face 或修�
   `unittest discover`：95/95 PASS（仅有 Starlette TestClient deprecation warning）。
 - 尚未执行真实远端 origin、Content-Range 远端审计、PostgreSQL 查询或部署 smoke test；离线
   MockTransport/隔离 venv 结果不等同于生产对象可访问性。
+
+## 2026-08-22 —— v0.3 第三阶段 D1：科研用户前端骨架
+
+**范围：** 在现有只读 API C1/C2 之上新增独立 `frontend/` Next.js App Router 界面；不修改
+v0.2 canonical release、旧 site 或数据文件，不安装依赖，不连接数据库或远端服务。
+
+### 完成内容
+
+1. 建立 English-only 的 NCBI 风格目录界面：首页从 `/api/v1/stats` 动态显示 release、
+   source、endpoint、assembly 和 augmentation 摘要，并提供 accession/assembly 搜索与
+   augmentation 两个入口。
+2. 提供 `/sources`、`/sources/[sourceId]`、`/assemblies`、`/assemblies/[assemblyId]`、
+   `/explore`、`/endpoints/[endId]` 和 `/augmentation` 页面。页面展示物种、菌株、版本化
+   assembly、论文、实验方法、原始 accession、证据类别与记录数；同一 assembly 下不同
+   source 保持独立 track。`audit_only` 不显示 endpoint download 或 JBrowse 入口。
+3. `frontend/lib/api.ts` 统一封装服务端/浏览器 API 请求；服务端使用显式
+   `BTED_API_ORIGIN`，浏览器使用同源 `/api/v1`，rewrite 不硬编码 localhost。新增 loading、
+   error、empty 状态、响应式样式和前端 README。
+4. 新增不依赖 npm 包的 `frontend/scripts/check-contract.mjs`，检查必需路由、API wrapper、
+   rewrite 和关键边界文案。
+
+### 验证与限制
+
+- `node frontend/scripts/check-contract.mjs`：通过（12 个路由/配置文件及关键契约文案）。
+- 在已有 Node 依赖环境执行 `pnpm run build`：通过（Next.js 编译、类型检查、静态页面生成
+  均成功）。本轮没有执行真实浏览器 smoke test 或生产 API/数据库连接。
+- 前端只消费 C1/C2 已有 API；尚未实现多语言、gene context 计算或生产部署。
