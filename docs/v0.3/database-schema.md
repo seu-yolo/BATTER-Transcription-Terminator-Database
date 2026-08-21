@@ -214,6 +214,8 @@ MIME type、`supports_range`、许可状态和公开标记。`(release_version, 
 只有表中已登记的 origin 才能被 `/api/v1/assets/{asset_id}` 代理；FastAPI 依据
 `supports_range` 和 byte size 执行 `HEAD`/Range 合约，不能接受任意 URL。数据库不把
 Hugging Face 对象当作 canonical release；对象变化必须新建 release 或新 checksum。
+物化 origin 固定为 `<asset_origin_base>/<logical_path>`，并保留 `logical_path` 的目录层级；
+`asset_id` 仅用于稳定 API 路由，不用作对象存储路径。
 
 ## 3. 证据、状态和 augmentation 约束
 

@@ -52,8 +52,21 @@ def _kind(asset: Mapping[str, Any]) -> str:
     return str(asset.get("asset_kind", asset.get("role", ""))).lower()
 
 
+def is_public_asset(asset: Mapping[str, Any]) -> bool:
+    """Treat repository rows without the SQL-only flag as public."""
+
+    value = asset.get("is_public")
+    if isinstance(value, str):
+        return value.lower() not in {"false", "0", "no"}
+    return value is not False and value != 0
+
+
 def _find(assets: Sequence[Mapping[str, Any]], kind: str) -> dict[str, Any] | None:
-    matches = [dict(item) for item in assets if _kind(item) == kind and _asset_id(item)]
+    matches = [
+        dict(item)
+        for item in assets
+        if _kind(item) == kind and _asset_id(item) and is_public_asset(item)
+    ]
     return sorted(matches, key=lambda item: str(_asset_id(item)))[0] if matches else None
 
 
@@ -89,10 +102,9 @@ def _raw_accessions(source: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 def _public_source(source: Mapping[str, Any]) -> bool:
     return (
-        str(source.get("source_id", "")) != "BATTER_S1_002"
-        and str(source.get("release_status", "")) == "published_standardized"
+        str(source.get("release_status", "")) == "published_standardized"
         and int(source.get("record_count", 0) or 0) > 0
-        and bool(source.get("has_jbrowse", True))
+        and has_public_endpoint_bed(source)
     )
 
 
@@ -148,6 +160,12 @@ def _source_assets(source: Mapping[str, Any], fallback_track: Mapping[str, Any] 
     return assets
 
 
+def has_public_endpoint_bed(source: Mapping[str, Any], fallback_track: Mapping[str, Any] | None = None) -> bool:
+    """Return whether a source has a registered public endpoint BED asset."""
+
+    return _find(_source_assets(source, fallback_track), "bed") is not None
+
+
 def _endpoint_track(source: Mapping[str, Any], assets: Sequence[Mapping[str, Any]], assembly_name: str, asset_base: str) -> dict[str, Any] | None:
     bed = _find(assets, "bed")
     if bed is None:
@@ -172,7 +190,10 @@ def _signal_tracks(source: Mapping[str, Any], assets: Sequence[Mapping[str, Any]
     # A registered BigWig is an observed-signal asset.  This does not change
     # the source's endpoint evidence class: a curated endpoint source may also
     # expose a separate raw signal layer.
-    bigwigs = sorted((asset for asset in assets if _kind(asset) == "bigwig"), key=lambda item: str(_asset_id(item)))
+    bigwigs = sorted(
+        (asset for asset in assets if _kind(asset) == "bigwig" and is_public_asset(asset)),
+        key=lambda item: str(_asset_id(item)),
+    )
     if not bigwigs:
         return []
     source_id = str(source.get("source_id"))

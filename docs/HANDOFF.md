@@ -445,3 +445,42 @@ assets 在 genes 前写入以满足 annotation asset FK。无 bundle 参数的�
 contigs/0 genes。新增 focused real-count（本地有 v0.2 bundle 时）与 fake
 preflight/load-order tests；CI 没有本地大 bundle 时 real-count test 会 skip，但生成器
 和默认路径仍会执行。
+
+## v0.3 公共资产远端交接（2026-08-22）
+
+当前只完成本地准备与代码覆盖，**没有实际上传、联网审计或 verified promotion**。
+
+- tracked inventory：105 行、19 个唯一 assembly；其中 77 个 browser 对象为
+  `verified_redistributable`/`is_public=true`。带 inventory 的 planned materialized
+  bundle 有 211 个 asset 行，完整发布集合为 164 个
+  `verified_redistributable`/`is_public=true` 对象，另有 47 个 private/external 行。
+  其中 87 个是 inventory 之外的 canonical metadata/checksum/annotation 等 API 小文件。
+- 当前真实 GFF/FAI 物化结果：95,437 genes，`endpoint_gene_context=0`。
+- `scripts/prepare_v03_public_asset_objects.py` 生成 `ASSET_OBJECTS.json` 和对象树；
+  `scripts/audit_v03_remote_assets.py` 只从显式 HTTPS origin 与登记 `object_path` 构造
+  URL，对每项执行 HEAD 与 `bytes=0-0` 单 Range，记录长度、206、Content-Range、1 字节和
+  `ok`，不上传、不重试、不缓存、不接受清单外 URL。
+- 维护者的实际操作顺序见 [`docs/v0.3/deploy-assets.md`](v0.3/deploy-assets.md)。
+  77/77 只代表 browser subset；全局 bundle/import verification 需要 materialized
+  assets 中全部 164 个 public+verified 对象通过，才能考虑
+  `asset_origin_status=verified`；不能手工把 `supports_range` 改成 true。
+- CI 现在显式运行 gene/object preparation/remote-audit 专项测试，并对这些脚本和
+  `backend/importer` 的 canonical/materialize/postgres Python 文件执行 `py_compile`。
+
+## v0.3 远端审核报告应用交接（2026-08-22）
+
+`scripts/apply_v03_remote_asset_audit.py` 是 audit 与 PostgreSQL writer 之间的离线步骤。
+输入 planned materialized bundle、`REMOTE_ASSET_AUDIT.json` 和 tracked browser inventory，
+输出新的 checksum-complete bundle。required 集合来自 materialized asset table 当前全部
+164 个 public+verified 行（77 browser + 87 canonical small assets）；tracked inventory
+只核对 browser provenance。只有 164/164 的 asset ID、对象路径、大小、SHA-256、HEAD 200
+与 Range 206 均匹配时，manifest 才成为 `asset_origin_status=verified`；external/private
+asset 继续保持 Range=false。当前 prepare 脚本已从完整 materialized `assets.jsonl` 生成
+164-object manifest，77 个 browser 行仅作为 inventory provenance cross-check。此步骤不上传、不联网、
+不写数据库，也不代表 promotion 已执行。audit/apply focused 8/8 PASS，另有
+prepare focused 2/2 PASS。默认环境全量 `unittest discover` 当前为 123 tests
+（3 个可选 FastAPI runtime skipped）。
+
+Materializer `bted-materializer-0.3.0-b2` 已统一所有 asset origin 为
+`<asset_origin_base>/<logical_path>`。重新物化会改变 assets/manifest/bundle checksum，但
+默认 127 与 inventory 211 行数不变；`asset_id` 不再用于拼接对象存储 URL。

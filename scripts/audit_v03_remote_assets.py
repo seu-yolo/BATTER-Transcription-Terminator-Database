@@ -21,7 +21,7 @@ from urllib.request import Request, urlopen
 
 MANIFEST_NAME = "ASSET_OBJECTS.json"
 OUTPUT_NAME = "REMOTE_ASSET_AUDIT.json"
-GENERATOR_VERSION = "bted-remote-asset-audit-0.1.0"
+GENERATOR_VERSION = "bted-remote-asset-audit-0.2.0"
 
 
 class RemoteAssetAuditError(ValueError):
@@ -190,8 +190,9 @@ def audit_remote_assets(
         )
         records.append({
             "asset_id": item["asset_id"],
+            "object_path": item["object_path"],
             "url": url,
-            "size": item["byte_size"],
+            "byte_size": item["byte_size"],
             "sha256": item["sha256"],
             "head_status": head.status,
             "range_status": ranged.status,
@@ -200,7 +201,7 @@ def audit_remote_assets(
         })
 
     audit: dict[str, Any] = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "generator": "scripts/audit_v03_remote_assets.py",
         "generator_version": GENERATOR_VERSION,
         "release_version": manifest.get("release_version"),

@@ -520,6 +520,10 @@ class TestBtedV03Importer(unittest.TestCase):
         self.assertTrue({row["asset_kind"] for row in assets} <= allowed)
         self.assertTrue(all("origin_status" not in row for row in assets))
         self.assertTrue(all(row["supports_range"] is False for row in assets))
+        self.assertTrue(all(
+            row["origin_url"] == f"https://example.test/assets/{row['logical_path']}"
+            for row in assets
+        ))
         accession_rows = self._read_bundle_rows("source_accessions")
         self.assertTrue(all("metadata_json" not in row for row in accession_rows))
         self.assertTrue(all("source_id_ref" in row for row in accession_rows))

@@ -92,6 +92,8 @@ class TestRemoteAssetAudit(unittest.TestCase):
             self.assertEqual(first_output.read_bytes(), second_output.read_bytes())
             self.assertEqual(first["summary"], {"total": 2, "ok": 2, "failed": 0})
             self.assertEqual([item["asset_id"] for item in first["objects"]], ["alpha", "zeta"])
+            self.assertEqual(first["objects"][0]["object_path"], "assemblies/GCF_TEST/reference/reference.fna")
+            self.assertEqual(first["objects"][0]["byte_size"], 4)
             self.assertTrue(all(item["supports_range"] and item["ok"] for item in first["objects"]))
             self.assertEqual(
                 [url for _, url, _ in first_transport.calls],

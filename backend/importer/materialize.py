@@ -34,7 +34,7 @@ from .canonical import (
 )
 
 
-MATERIALIZER_VERSION = "bted-materializer-0.3.0-b1"
+MATERIALIZER_VERSION = "bted-materializer-0.3.0-b2"
 MATERIALIZATION_SCHEMA_VERSION = "bted-postgresql-staging-0.3.0"
 ANNOTATION_KINDS = (
     "experimental_measurement",
@@ -288,11 +288,6 @@ def _mime_type(logical_path: str, asset_kind: str) -> str:
     return "application/octet-stream"
 
 
-def _asset_origin(base: str, asset_id: str) -> str:
-    # asset_id is already a single path segment by canonical validation.
-    return f"{base}/{quote(asset_id, safe="-._~")}"  # noqa: E501
-
-
 def _asset_origin_path(base: str, object_path: str) -> str:
     """Return a planned object URL while preserving path separators."""
 
@@ -315,7 +310,11 @@ def _portable_inventory_path(path: Path, repo_root: Path) -> str:
         return path.name
 
 
-def _read_jbrowse_inventory_rows(inventory_path: Path) -> list[dict[str, str]]:
+def _read_jbrowse_inventory_rows(
+    inventory_path: Path,
+    *,
+    expected_row_count: int | None = 105,
+) -> list[dict[str, str]]:
     """Read the validated v0.2 browser inventory with its fixed schema."""
 
     try:
@@ -326,7 +325,7 @@ def _read_jbrowse_inventory_rows(inventory_path: Path) -> list[dict[str, str]]:
             rows = list(reader)
     except (OSError, UnicodeError, csv.Error) as exc:
         raise MaterializationError(f"cannot read JBrowse asset inventory: {inventory_path}") from exc
-    if len(rows) != 105:
+    if expected_row_count is not None and len(rows) != expected_row_count:
         raise MaterializationError("JBrowse asset inventory must contain 105 v0.2.0 rows")
     return rows
 
@@ -405,7 +404,12 @@ def _build_gff_gene_tables(
 ) -> dict[str, Any]:
     """Read the current gene-only GFF3/FAI browser assets into query tables."""
 
-    inventory_rows = _read_jbrowse_inventory_rows(inventory_path)
+    # The full inventory merge enforces the current 105-row release shape.
+    # This parser also remains unit-testable with a tiny synthetic inventory.
+    inventory_rows = _read_jbrowse_inventory_rows(
+        inventory_path,
+        expected_row_count=None,
+    )
     gff_rows: dict[str, dict[str, str]] = {}
     fai_rows: dict[str, dict[str, str]] = {}
     for row in inventory_rows:
@@ -589,16 +593,7 @@ def _merge_jbrowse_asset_inventory(
 ) -> dict[str, Any]:
     """Replace canonical BED assets and add the tracked browser inventory."""
 
-    try:
-        with inventory_path.open(encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle, delimiter="\t")
-            if tuple(reader.fieldnames or ()) != JBROWSE_INVENTORY_COLUMNS:
-                raise MaterializationError("JBrowse asset inventory header does not match schema")
-            inventory_rows = list(reader)
-    except (OSError, UnicodeError, csv.Error) as exc:
-        raise MaterializationError(f"cannot read JBrowse asset inventory: {inventory_path}") from exc
-    if len(inventory_rows) != 105:
-        raise MaterializationError("JBrowse asset inventory must contain 105 v0.2.0 rows")
+    inventory_rows = _read_jbrowse_inventory_rows(inventory_path)
 
     release_version = str(snapshot["release"].get("release_version", ""))
     source_manifests = snapshot.get("source_manifests", {})
@@ -1255,6 +1250,7 @@ def _build_tables(
                 continue
             logical_path = f"records/{source_id}/{Path(relative).as_posix()}"
             asset_kind = str(item.get("asset_kind", "metadata"))
+            origin_url = _asset_origin_path(asset_origin_base, logical_path)
             assets.append(
                 {
                     "asset_id": asset_id,
@@ -1263,8 +1259,8 @@ def _build_tables(
                     "assembly_id_ref": None,
                     "asset_kind": asset_kind,
                     "logical_path": logical_path,
-                    "origin_url": _asset_origin(asset_origin_base, asset_id),
-                    "origin_host": urlparse(_asset_origin(asset_origin_base, asset_id)).hostname,
+                    "origin_url": origin_url,
+                    "origin_host": urlparse(origin_url).hostname,
                     "byte_size": int(item.get("byte_size", 0)),
                     "sha256": str(item.get("sha256", "")),
                     "mime_type": _mime_type(logical_path, asset_kind),

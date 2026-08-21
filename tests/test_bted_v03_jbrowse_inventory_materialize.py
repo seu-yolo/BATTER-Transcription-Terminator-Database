@@ -83,7 +83,7 @@ class TestJBrowseInventoryMaterialization(unittest.TestCase):
             or row["asset_id"].startswith("v0.2.0--source-")
         ]
         self.assertEqual(len(inventory_assets), 105)
-        for row in inventory_assets:
+        for row in self.assets:
             self.assertEqual(
                 row["origin_url"],
                 f"https://example.test/assets/{row['logical_path']}",

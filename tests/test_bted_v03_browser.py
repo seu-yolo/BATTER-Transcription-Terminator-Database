@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from typing import Any, Mapping
 
-from backend.app.browser import build_jbrowse_config
+from backend.app.browser import BrowserConfigUnavailable, build_jbrowse_config
 from backend.app.contracts import ReleaseContext, RepositoryNotFound
 from backend.app.service import ReadService
 
@@ -102,6 +102,25 @@ class TestDynamicJBrowseConfig(unittest.TestCase):
         self.assertEqual(len(signals[0]["adapter"]["subadapters"]), 2)
         no_signal = build_jbrowse_config(assembly(), [source("BATTER_S1_007")], RELEASE)
         self.assertFalse(any(track["type"] == "QuantitativeTrack" for track in no_signal["tracks"]))
+
+    def test_private_or_missing_endpoint_bed_is_not_a_browser_source(self) -> None:
+        missing = source("BATTER_S1_007")
+        missing["assets"] = [asset for asset in missing["assets"] if asset["asset_kind"] != "bed"]
+        with self.assertRaises(BrowserConfigUnavailable):
+            build_jbrowse_config(assembly(), [missing], RELEASE)
+
+        private = source("BATTER_S1_007")
+        private["assets"][0]["is_public"] = False
+        with self.assertRaises(BrowserConfigUnavailable):
+            build_jbrowse_config(assembly(), [private], RELEASE)
+
+        with self.assertRaises(BrowserConfigUnavailable):
+            build_jbrowse_config(
+                assembly(),
+                [source("BATTER_S1_008"), missing],
+                RELEASE,
+                default_source_id="BATTER_S1_007",
+            )
 
     def test_service_builds_dynamic_config_and_rejects_audit_source_default(self) -> None:
         service = ReadService(BundleRepository())

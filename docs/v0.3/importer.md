@@ -201,8 +201,10 @@ forward/reverse BigWig。21 个 BED 使用相同 `logical_path` 替换原 canoni
 不会重复计数，因此最终 `assets.jsonl` 为 `127 - 21 + 105 = 211` 行。参考资产只关联
 assembly；BED/BigWig 只关联 source；S1_002 不产生浏览器资产。
 
-inventory 的 `object_path` 被用作计划 origin 路径，目录层级会保留；它不会被替换成
-单段 asset ID。当前对象尚未上传，manifest 仍记录
+所有资产统一以 `logical_path` 生成计划 origin URL，即
+`<asset_origin_base>/<logical_path>`；browser inventory 的 `object_path` 在物化后就是对应
+`logical_path`。目录层级会保留，`asset_id` 只作数据库/API key，绝不替代远端对象路径。
+当前对象尚未上传，manifest 仍记录
 `asset_origin_status=planned_not_verified`，所有资产 `supports_range=false`。TSV 中
 `external_link_only` 行必须 `is_public=false`；这一步只准备可审计写库行，不表示 URL
 已经存在或 JBrowse 已可打开。
@@ -377,6 +379,28 @@ promotion 同样需要数据库环境变量，并且只有在 bundle 和最新 c
 `asset_origin_status` 都明确为 `verified`、计数审计通过时才允许；当前 v0.2 bundle 是
 `planned_not_verified`，因此 promotion 必须被拒绝。远程资产的存在性和 HTTP 206 Range
 能力需要另行审计并生成新的 verified bundle，不能由 writer 猜测。
+
+远端审核通过后，不手工修改 JSONL。使用 report-driven 离线步骤生成新的 verified bundle：
+
+```bash
+python3 scripts/apply_v03_remote_asset_audit.py \
+  --bundle-dir /tmp/bted-v03-staging-with-browser \
+  --remote-audit /path/to/REMOTE_ASSET_AUDIT.json \
+  --output-dir /tmp/bted-v03-verified
+```
+
+该命令可直接从仓库根目录按上述形式运行；脚本会像主 `import_bted_v03.py` CLI 一样先将
+仓库根加入 Python module search path，不要求预先安装 BTED 为 Python package。
+
+该步骤从 materialized `assets.jsonl` 选择全部 `is_public=true` 且
+`redistribution_status=verified_redistributable` 的 required asset。当前 211 行中共有
+164 行：77 个 browser asset 加 87 个 canonical metadata/checksum/annotation 等小文件。
+tracked inventory 仅对 77 个 browser asset 做额外 provenance 核对，不能代替完整 required
+集合。audit 中 164 个对象必须与物化行的 `asset_id`、`object_path`/`logical_path`、
+`byte_size`、`sha256` 完全一致，且 HEAD/Range 均通过。只有全部满足时才把这些行的
+`supports_range` 设为 `true` 并将 manifest 的
+`asset_origin_status` 改为 `verified`；private/`external_link_only` 行保持 `false`。
+脚本不联网、不上传、不连接数据库，输出到新的空目录并重建 checksum。
 
 ### B2 的边界
 

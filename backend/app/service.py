@@ -16,7 +16,7 @@ from urllib.parse import quote, urlencode
 from backend.importer.canonical import V02_ENDPOINT_COLUMNS
 
 from .assets import AssetProxyResponse, AssetProxyService
-from .browser import BrowserConfigUnavailable, build_jbrowse_config
+from .browser import BrowserConfigUnavailable, build_jbrowse_config, has_public_endpoint_bed, is_public_asset
 from .contracts import Page, ReadRepository, ReleaseContext, RepositoryNotFound, RepositoryUnavailable
 from .errors import ApiError, invalid, not_found
 
@@ -188,6 +188,11 @@ class ReadService:
         assets = row.get("assets", [])
         if not isinstance(assets, list):
             assets = []
+        browser_available = (
+            row.get("release_status") == "published_standardized"
+            and int(row.get("record_count", 0) or 0) > 0
+            and has_public_endpoint_bed(row)
+        )
         manifest_asset = next(
             (asset for asset in assets if isinstance(asset, Mapping) and str(asset.get("logical_path", "")).endswith("manifest.json")),
             None,
@@ -200,7 +205,7 @@ class ReadService:
                 f"/api/v1/downloads/endpoints?release_version={quote(release.release_version)}"
                 f"&source_id={quote(source_id)}"
             )
-            if row.get("has_jbrowse"):
+            if browser_available:
                 assembly_accession = assembly.get("accession")
                 if assembly_accession:
                     config_url = f"/api/v1/assemblies/{quote(str(assembly_accession), safe='')}/jbrowse-config"
@@ -219,7 +224,7 @@ class ReadService:
             "assay_family": row.get("assay_family"),
             "evidence_class": row.get("evidence_class"),
             "record_count": int(row.get("record_count", 0)),
-            "has_jbrowse": bool(row.get("has_jbrowse", False)),
+            "has_jbrowse": browser_available,
             "used_for_batter_augmentation": bool(row.get("used_for_batter_augmentation", False)),
             "augmentation_eligible": bool(row.get("used_for_batter_augmentation", False)),
             "publication": publication,
@@ -285,6 +290,11 @@ class ReadService:
                 track = dict(raw_track)
                 if track.get("source_id"):
                     track["links"] = {"source": f"/api/v1/sources/{quote(str(track['source_id']))}"}
+                track["has_jbrowse"] = (
+                    track.get("release_status") == "published_standardized"
+                    and int(track.get("record_count", 0) or 0) > 0
+                    and has_public_endpoint_bed(track)
+                )
                 track["provenance"] = {"release_version": release.release_version, "assembly_accession": accession}
                 tracks.append(track)
         result = {
@@ -307,13 +317,17 @@ class ReadService:
         if accession and any(
             isinstance(track, Mapping)
             and track.get("release_status") == "published_standardized"
-            and bool(track.get("has_jbrowse", True))
+            and bool(track.get("has_jbrowse", False))
             for track in tracks
         ) and any(
-            isinstance(asset, Mapping) and str(asset.get("asset_kind", "")) == "fasta"
+            isinstance(asset, Mapping)
+            and str(asset.get("asset_kind", "")) == "fasta"
+            and is_public_asset(asset)
             for asset in result["assets"]
         ) and any(
-            isinstance(asset, Mapping) and str(asset.get("asset_kind", "")) == "fai"
+            isinstance(asset, Mapping)
+            and str(asset.get("asset_kind", "")) == "fai"
+            and is_public_asset(asset)
             for asset in result["assets"]
         ):
             config_url = f"/api/v1/assemblies/{quote(str(accession), safe='')}/jbrowse-config"

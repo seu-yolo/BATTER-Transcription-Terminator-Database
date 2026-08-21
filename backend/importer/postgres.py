@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from .canonical import V02_ENDPOINT_COLUMNS, sha256_file
 from .materialize import (
@@ -422,6 +422,12 @@ def verify_bundle(bundle_dir: str | Path) -> BundleVerification:
         "verified",
     }:
         raise PostgresWriterError("bundle asset_origin_status is missing or invalid")
+    origin_base = str(origin.get("base", "")).rstrip("/")
+    parsed_base = urlparse(origin_base)
+    if parsed_base.scheme != "https" or not parsed_base.hostname:
+        raise PostgresWriterError("bundle asset origin base must be HTTPS")
+    if str(origin.get("host", "")) != parsed_base.hostname:
+        raise PostgresWriterError("bundle asset origin host does not match base")
     tables = manifest.get("tables")
     if not isinstance(tables, Mapping) or set(tables) != set(EXPECTED_TABLES):
         raise PostgresWriterError("bundle table set does not match the PostgreSQL contract")
@@ -813,6 +819,14 @@ def _preflight(verification: BundleVerification) -> PreflightState:
             raise PostgresWriterError(f"assets:{number} origin_url must be HTTPS")
         if str(row["origin_host"]) != parsed_origin.hostname:
             raise PostgresWriterError(f"assets:{number} origin_host does not match origin_url")
+        expected_origin = (
+            f"{str(verification.manifest['asset_origin']['base']).rstrip('/')}"
+            f"/{quote(str(row['logical_path']), safe='/-._~')}"
+        )
+        if str(row["origin_url"]) != expected_origin:
+            raise PostgresWriterError(
+                f"assets:{number} origin_url does not match logical_path"
+            )
         if verification.manifest["asset_origin"]["asset_origin_status"] == "planned_not_verified" and supports_range:
             raise PostgresWriterError(
                 f"assets:{number} cannot claim supports_range before remote HTTP 206 audit"

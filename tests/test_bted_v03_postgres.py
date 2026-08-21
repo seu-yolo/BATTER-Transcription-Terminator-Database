@@ -225,7 +225,7 @@ def _tiny_preflight_verification(root: Path, mutate: Any = None) -> BundleVerifi
     }]
     rows["assets"] = [{
         "asset_id": "release--manifest", "release_version": "v0.2.0", "asset_kind": "release_manifest",
-        "logical_path": "release_manifest.json", "origin_url": "https://example.test/release_manifest.json",
+        "logical_path": "release_manifest.json", "origin_url": "https://example.test/assets/release_manifest.json",
         "origin_host": "example.test", "byte_size": 1, "sha256": "a" * 64,
         "mime_type": "application/json", "supports_range": False,
         "redistribution_status": "external_link_only", "is_public": False,
@@ -243,7 +243,11 @@ def _tiny_preflight_verification(root: Path, mutate: Any = None) -> BundleVerifi
         table_files[table] = path
     manifest = {
         "release_version": "v0.2.0",
-        "asset_origin": {"asset_origin_status": "planned_not_verified"},
+        "asset_origin": {
+            "base": "https://example.test/assets",
+            "host": "example.test",
+            "asset_origin_status": "planned_not_verified",
+        },
     }
     return BundleVerification(root, manifest, table_files, {})
 
@@ -506,6 +510,14 @@ class TestBtedV03Postgres(unittest.TestCase):
             with self.assertRaises(PostgresWriterError) as error:
                 _preflight(verify_bundle(bundle))
             self.assertIn("supports_range", str(error.exception))
+
+        asset["supports_range"] = False
+        asset["origin_url"] = "https://example.test/assets/release--manifest"
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = _write_minimal_bundle(Path(directory) / "bundle", asset_rows=[asset])
+            with self.assertRaises(PostgresWriterError) as error:
+                _preflight(verify_bundle(bundle))
+            self.assertIn("logical_path", str(error.exception))
 
     def test_preflight_rejects_schema_check_violations_before_transaction(self) -> None:
         cases = (

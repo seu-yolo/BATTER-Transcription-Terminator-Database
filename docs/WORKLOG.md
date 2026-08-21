@@ -993,3 +993,88 @@ contigs；不修改 canonical v0.2 endpoint、canonical contig registry 或计�
 - gene 是 GFF-derived query layer，不替代 endpoint evidence，也不改变 canonical release。
 - endpoint_gene_context 仍需未来单独算法/审核任务；本轮不生成任何上下文结果。
 - 真实 PostgreSQL/远端对象/JBrowse 浏览器 smoke test 仍未执行。
+
+## 2026-08-22 —— v0.3 公共浏览器资产远端交接准备
+
+**范围：** 只补充 CI 覆盖和维护者操作说明；没有上传对象、联网审计、连接 PostgreSQL
+或修改 materializer/importer 实现。
+
+### 已核实事实
+
+- tracked browser inventory 共 105 行，覆盖 19 个唯一 assembly。
+- `prepare_v03_public_asset_objects.py` 按
+  `is_public=true AND redistribution_status=verified_redistributable` 选择 77 个可再分发
+  object；另有 28 个 `external_link_only` object，均为 `is_public=false`。
+- 当前真实 GFF/FAI bundle 的 gene query layer 为 95,437 genes；
+  `endpoint_gene_context` 仍为 0。
+- 没有任何实际对象上传，也没有远端 HTTP 206 审计结果；origin 仍不能标为 verified。
+
+### CI 与交接
+
+1. CI 增加 gene importer、public-object preparation 和 remote-audit 的专项 unittest，
+   同时将 `prepare_v03_public_asset_objects.py`、`audit_v03_remote_assets.py` 以及
+   `backend/importer/{canonical,materialize,postgres}.py` 纳入 `py_compile`。
+2. 新增 `docs/v0.3/deploy-assets.md`，固定 materialized assets → 164 objects → 外部/人工上传 →
+   HEAD/单字节 Range 206 audit → 后续 verified bundle/import verification 的最短顺序。
+   文档明确仓库不实现上传、不保存凭据，离线 mock transport 不是远端可用性证据。
+
+## 2026-08-22 —— v0.3 远端资产审核报告应用步骤
+
+- `audit_v03_remote_assets.py` 的确定性报告补充 `object_path` 和 `byte_size` 身份字段。
+- 新增 `apply_v03_remote_asset_audit.py`：required 集合来自 materialized assets 中全部
+  public + verified_redistributable 行（当前 164），而不是只取 77 行 browser inventory；
+  tracked inventory 仅对 browser subset 做额外 provenance 核对。
+- 只有 164/164 的身份、HEAD 200 与 Range 206 均通过时，才输出
+  `asset_origin_status=verified` 的新 bundle 并将这些行设为 `supports_range=true`；private/
+  `external_link_only` 对象保持 false。完整 materialized prepare 产生 164-object manifest；
+  仅含 77 个 browser 对象的旧 report 会被拒绝。
+- focused audit/apply tests：8/8 PASS；默认环境全量 `unittest discover`：118 tests
+  PASS（3 个可选 FastAPI runtime skipped）；`git diff --check`：PASS。
+
+## 2026-08-22 —— v0.3 完整 public-object preparation 修正
+
+上一条交接记录中的 inventory-only 77-object preparation 已扩展为完整
+materialized asset preparation。带 JBrowse inventory 的 planned bundle 当前有 211 行：
+其中 164 行同时满足 `is_public=true` 与
+`redistribution_status=verified_redistributable`，47 行 private/external 被排除。
+77 个 tracked inventory browser 行仍作为 identity/provenance cross-check；其余 87 个
+canonical metadata、checksum、endpoint/annotation 等 API 小文件由同一个
+`assets.jsonl` 选择，不再手工补列。
+
+`scripts/prepare_v03_public_asset_objects.py` 现在要求 `--materialized-bundle`，从该
+bundle 的 `assets.jsonl` 读取完整清单，并按 inventory 的 `bundle_path`、canonical
+release 的 `records/` 路径解析本地源文件。每个 `ASSET_OBJECTS.json` 行均保留
+`asset_id`、`object_path`、`byte_size`、`sha256`；本地源文件在复制前后都核对大小和
+SHA-256。新增专项测试核对真实 164/47/77 计数、canonical/JBrowse 源解析、确定性输出和
+private/external 排除。没有上传对象、联网审计或修改 canonical release。
+
+本轮 `tests/test_prepare_v03_public_asset_objects.py`：2/2 PASS；默认环境全量
+`unittest discover`：123 tests（3 个可选 FastAPI runtime skipped）通过，
+`git diff --check` 与相关脚本 `py_compile` 通过。
+
+## 2026-08-22 —— v0.3 public-link availability 修正
+
+ReadService 与动态 JBrowse builder 现在按公开资产判定浏览器可用性：source 必须同时
+满足 `published_standardized`、`record_count > 0` 和公开 endpoint BED；assembly 还必须
+有公开 FASTA+FAI 且至少存在一个这样的 source。旧 `has_jbrowse` 标志不再单独生成链接，
+`external_link_only` 的原始 accession/repository 链接仍保留。新增 API/browser focused
+tests 覆盖缺失或私有 BED、私有参考资产及默认 source 选择边界；未修改生物数据或上传对象。
+
+## 2026-08-22 —— remote-audit apply CLI 入口修正
+
+真实端到端命令从仓库根运行 `python3 scripts/apply_v03_remote_asset_audit.py ...` 时，曾因
+Python 只把 `scripts/` 放入 module search path 而触发 `ModuleNotFoundError: backend`。
+现按 `scripts/import_bted_v03.py` 的既有方式，在导入 `backend` 前加入解析后的仓库根路径。
+新增 subprocess `--help` 测试，从仓库根直接启动并确认 CLI 参数可用；未联网、上传或写库。
+
+## 2026-08-22 —— materialized asset origin 路径统一
+
+真实端到端演练发现 87 个 public canonical 小文件仍按 `asset_id` 生成 origin URL，与
+public-object preparation/audit 使用的 `records/<source>/...` logical path 不一致。现将
+127 个默认 canonical asset 与接入 inventory 后的 211 个 asset 全部统一为
+`<asset_origin_base>/<logical_path>`；`asset_id` 只保留为数据库/API key。
+
+materializer version 升为 `bted-materializer-0.3.0-b2`，因此重新物化时资产表、manifest 与
+bundle checksum 会确定性变化，表行数仍保持默认 127、inventory 模式 211。PostgreSQL
+preflight 同步要求 manifest origin base/host 有效，并拒绝 origin URL 与 logical path
+不一致的 bundle。

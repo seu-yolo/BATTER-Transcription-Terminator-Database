@@ -52,6 +52,7 @@ def _source(source_id: str, *, audit: bool = False) -> dict[str, Any]:
         "assets": [
             {"asset_id": f"{source_id}--manifest", "asset_kind": "metadata", "logical_path": f"records/{source_id}/manifest.json"},
             {"asset_id": f"{source_id}--config", "asset_kind": "config", "logical_path": f"jbrowse/{source_id}.json"},
+            {"asset_id": f"{source_id}--bed", "asset_kind": "bed", "logical_path": f"records/{source_id}/endpoints.bed"},
         ] if not audit else [],
     }
 
@@ -219,6 +220,50 @@ class TestBtedV03ApiService(unittest.TestCase):
         self.assertEqual(audit["record_count"], 0)
         self.assertNotIn("endpoints_download", audit["links"])
         self.assertNotIn("jbrowse", audit["links"])
+
+    def test_source_jbrowse_link_requires_public_endpoint_bed(self) -> None:
+        row = self.repository.sources["BATTER_S1_007"]
+        row["assets"] = [asset for asset in row["assets"] if asset["asset_kind"] != "bed"]
+        missing = self.service.source_detail(None, "BATTER_S1_007")
+        self.assertFalse(missing["has_jbrowse"])
+        self.assertNotIn("jbrowse", missing["links"])
+
+        row["assets"].append({
+            "asset_id": "BATTER_S1_007--bed",
+            "asset_kind": "bed",
+            "logical_path": "records/BATTER_S1_007/endpoints.bed",
+            "is_public": False,
+        })
+        private = self.service.source_detail(None, "BATTER_S1_007")
+        self.assertFalse(private["has_jbrowse"])
+        self.assertNotIn("jbrowse", private["links"])
+
+    def test_assembly_jbrowse_link_requires_public_reference_and_endpoint_assets(self) -> None:
+        row = {
+            "assembly_accession": ASSEMBLY,
+            "assets": [
+                {"asset_id": "assembly--fasta", "asset_kind": "fasta"},
+                {"asset_id": "assembly--fai", "asset_kind": "fai"},
+            ],
+            "source_tracks": [{
+                "source_id": "BATTER_S1_007",
+                "record_count": 1,
+                "release_status": "published_standardized",
+                "has_jbrowse": False,
+                "assets": [{"asset_id": "source--bed", "asset_kind": "bed"}],
+            }],
+        }
+        available = self.service._assembly_item(RELEASE, row)
+        self.assertIn("jbrowse", available["links"])
+
+        row["assets"][0]["is_public"] = False
+        no_reference = self.service._assembly_item(RELEASE, row)
+        self.assertNotIn("links", no_reference)
+
+        row["assets"][0].pop("is_public")
+        row["source_tracks"][0]["assets"][0]["is_public"] = False
+        no_endpoint = self.service._assembly_item(RELEASE, row)
+        self.assertNotIn("links", no_endpoint)
 
     def test_pagination_sort_and_endpoint_24_columns(self) -> None:
         result = self.service.list_endpoints(None, filters={}, page=1, page_size=1, sort="end_id", order="asc")

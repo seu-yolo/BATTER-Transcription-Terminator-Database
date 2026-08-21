@@ -409,13 +409,17 @@ annotation asset ID 与 SHA-256 provenance，并可给出同一 release 的已�
 
 ## 3. JBrowse deep link
 
-JBrowse 链接属于 source/assembly 的 provenance，不是客户端拼接的任意路径。API 只对
-published source 且 `has_jbrowse = TRUE` 的记录返回 `links.jbrowse`，并使用已登记
-config/FASTA/FAI/GFF/BED asset ID。链接可附带 `assembly`、`loc`、`tracks` 参数，默认
+JBrowse 链接属于 source/assembly 的 provenance，不是客户端拼接的任意路径。source 只有在
+`release_status = published_standardized`、`record_count > 0` 且存在公开 endpoint BED
+asset 时才返回 `has_jbrowse = TRUE` 和 `links.jbrowse`；旧的 `has_jbrowse` 标志本身不
+足以生成入口。assembly 还必须有公开 FASTA+FAI，且至少有一个满足上述条件的 source，
+并使用已登记 config/FASTA/FAI/GFF/BED asset ID。链接可附带 `assembly`、`loc`、`tracks` 参数，默认
 窗口必须在同一 assembly/contig 中；不得跨 contig 生成 loc。
 
 `S1_002` 的 `links.jbrowse` 必须缺失或为 null；不能因为该 source 有参考组装就生成
-浏览器入口。预测轨道和不可拆分混合证据不能出现在该链接引用的公开配置中。
+浏览器入口。`external_link_only` 的 raw accession/repository 链接仍可保留，但私有
+asset 不得通过 asset proxy 或 JBrowse config 暴露。预测轨道和不可拆分混合证据不能
+出现在该链接引用的公开配置中。
 
 ## 4. 与 canonical release 的关系
 
@@ -443,7 +447,7 @@ S1_002 规则，`PostgresReadRepository` 负责参数化 PostgreSQL 查询，`cr
 `GET /api/v1/assemblies/{assembly_id}/jbrowse-config`。最后一个接口从同一 release 的
 assembly/source/assets 查询结果按请求生成 JBrowse JSON：FASTA+FAI 是必要参考资产；
 GFF3+TBI 存在时生成共享基因注释轨道；每个 published source 的 BED 保持独立 endpoint
-track。已登记 BigWig 才生成 observed-signal track；双链 BigWig 以
+track，且只有公开 BED source 才被纳入配置。已登记 BigWig 才生成 observed-signal track；双链 BigWig 以
 `MultiQuantitativeTrack` 紧凑展示，保留正值原始数值并标明 `normalization=none`、
 `display_transform=none`。轨道 metadata 包含 PMID/DOI、raw accession URL 和
 release/source provenance；S1_002 不进入配置。

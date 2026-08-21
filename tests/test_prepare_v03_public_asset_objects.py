@@ -1,4 +1,4 @@
-"""Focused tests for preparing public v0.3 browser asset objects."""
+"""Focused tests for preparing the complete public v0.3 asset object set."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
+
+from backend.importer.materialize import materialize_release
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -31,111 +34,154 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-@unittest.skipUnless(BUNDLE.is_dir(), "the frozen v0.2 JBrowse bundle is not available")
-class TestRealPublicAssetPlan(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.module = _load_module()
+def _write_materialized_bundle(root: Path, assets: list[dict[str, Any]]) -> Path:
+    root.mkdir(parents=True)
+    assets_path = root / "assets.jsonl"
+    assets_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in assets),
+        encoding="utf-8",
+    )
+    manifest = {
+        "release_version": "v0.2.0",
+        "asset_origin": {"asset_origin_status": "planned_not_verified"},
+        "tables": {
+            "assets": {
+                "file": "assets.jsonl",
+                "row_count": len(assets),
+                "sha256": _sha256(assets_path),
+            }
+        },
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+    return root
 
-    def test_real_inventory_selects_exactly_77_deterministic_objects(self) -> None:
-        with tempfile.TemporaryDirectory() as first_temp, tempfile.TemporaryDirectory() as second_temp:
-            first = Path(first_temp) / "objects"
-            second = Path(second_temp) / "objects"
-            manifest = self.module.prepare_public_asset_objects(
+
+@unittest.skipUnless(BUNDLE.is_dir() and INVENTORY.is_file(), "the frozen v0.2 JBrowse bundle is not available")
+class TestRealPublicAssetPlan(unittest.TestCase):
+    def test_real_materialized_bundle_selects_164_and_cross_checks_77_browser_objects(self) -> None:
+        module = _load_module()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            staging = materialize_release(
+                RELEASE,
+                repo_root=REPO_ROOT,
+                output_dir=root / "staging",
+                asset_origin_base="https://assets.example.test/bted",
+                generated_at_utc="2026-08-22T00:00:00Z",
+                jbrowse_asset_inventory=INVENTORY,
+            ).output_dir
+            first = module.prepare_public_asset_objects(
+                materialized_bundle=staging,
                 inventory_path=INVENTORY,
                 bundle=BUNDLE,
                 release_root=RELEASE,
-                output_dir=first,
+                output_dir=root / "first",
                 manifest_only=True,
             )
-            self.module.prepare_public_asset_objects(
+            second = module.prepare_public_asset_objects(
+                materialized_bundle=staging,
                 inventory_path=INVENTORY,
                 bundle=BUNDLE,
                 release_root=RELEASE,
-                output_dir=second,
+                output_dir=root / "second",
                 manifest_only=True,
             )
-            self.assertEqual(manifest["selection"], {
-                "policy": "is_public=true AND redistribution_status=verified_redistributable",
-                "selected_count": 77,
-                "excluded_count": 28,
+            self.assertEqual(first["selection"], {
+                "policy": "materialized assets where is_public=true AND redistribution_status=verified_redistributable",
+                "selected_count": 164,
+                "excluded_count": 47,
+                "materialized_asset_count": 211,
+                "public_browser_crosscheck_count": 77,
             })
-            self.assertEqual(
-                (first / "ASSET_OBJECTS.json").read_bytes(),
-                (second / "ASSET_OBJECTS.json").read_bytes(),
-            )
-            self.assertEqual(
-                (first / "SHA256SUMS.txt").read_bytes(),
-                (second / "SHA256SUMS.txt").read_bytes(),
-            )
-            serialized = json.dumps(manifest).lower()
+            self.assertEqual(len(first["objects"]), 164)
+            self.assertEqual((root / "first/ASSET_OBJECTS.json").read_bytes(), (root / "second/ASSET_OBJECTS.json").read_bytes())
+            self.assertEqual((root / "first/SHA256SUMS.txt").read_bytes(), (root / "second/SHA256SUMS.txt").read_bytes())
+            identities = {"asset_id", "object_path", "byte_size", "sha256"}
+            self.assertTrue(all(identities <= set(row) for row in first["objects"]))
+            paths = {row["object_path"] for row in first["objects"]}
+            self.assertIn("records/BATTER_S1_006/source_annotations.tsv", paths)
+            self.assertIn("records/BATTER_S1_006/endpoints.bed", paths)
+            self.assertIn("assemblies/GCF_000006765.1/reference/reference.fna", paths)
+            serialized = json.dumps(first).lower()
             self.assertNotIn("batter_s1_002", serialized)
             self.assertNotIn("external_link_only", serialized)
-            self.assertNotIn("candidate", serialized)
-            self.assertNotIn("signed-log", serialized)
-            self.assertNotIn(".config.json", serialized)
-            self.assertEqual({path.name for path in first.iterdir()}, {"ASSET_OBJECTS.json", "SHA256SUMS.txt"})
+            for forbidden in ("candidate", "signed-log", "normalized", ".config.json", "jbrowse-ui", "index.html"):
+                self.assertNotIn(forbidden, serialized)
+            self.assertEqual({path.name for path in (root / "first").iterdir()}, {"ASSET_OBJECTS.json", "SHA256SUMS.txt"})
 
 
 class TestSmallPublicAssetCopy(unittest.TestCase):
-    def test_copy_layout_checksums_and_nonempty_output_rejection(self) -> None:
+    def test_materialized_identity_resolution_copy_and_nonempty_output_rejection(self) -> None:
         module = _load_module()
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             bundle = root / "bundle"
             release = root / "release"
+            release_file = release / "records/S1/manifest.json"
+            release_file.parent.mkdir(parents=True)
+            release_file.write_text("{\"source_id\": \"S1\"}\n", encoding="utf-8")
+            browser_file = bundle / "reference.fna"
             bundle.mkdir()
-            release.mkdir()
-            public_source = bundle / "reference.fna"
-            excluded_source = release / "records/S1/endpoints.bed"
-            excluded_source.parent.mkdir(parents=True)
-            public_source.write_bytes(b">ctg\nACGT\n")
-            excluded_source.write_text("ctg\t0\t1\n", encoding="utf-8")
+            browser_file.write_bytes(b">ctg\nACGT\n")
+            inventory = root / "inventory.tsv"
             columns = [
                 "asset_id", "release_version", "source_id", "assembly_accession", "asset_role",
                 "asset_kind", "bundle_path", "canonical_path", "object_path", "byte_size", "sha256",
                 "mime_type", "supports_range", "redistribution_status", "is_public",
             ]
-            rows = [
-                {
-                    "asset_id": "public-fasta", "release_version": "v0.2.0", "source_id": "S1",
-                    "assembly_accession": "GCF_TEST.1", "asset_role": "reference_fasta",
-                    "asset_kind": "fasta", "bundle_path": "reference.fna", "canonical_path": "",
-                    "object_path": "assemblies/GCF_TEST.1/reference/reference.fna",
-                    "byte_size": str(public_source.stat().st_size), "sha256": _sha256(public_source),
-                    "mime_type": "text/plain", "supports_range": "false",
-                    "redistribution_status": "verified_redistributable", "is_public": "true",
-                },
-                {
-                    "asset_id": "excluded-bed", "release_version": "v0.2.0", "source_id": "S1",
-                    "assembly_accession": "GCF_TEST.1", "asset_role": "canonical_endpoints",
-                    "asset_kind": "bed", "bundle_path": "", "canonical_path": "records/S1/endpoints.bed",
-                    "object_path": "records/S1/endpoints.bed", "byte_size": str(excluded_source.stat().st_size),
-                    "sha256": _sha256(excluded_source), "mime_type": "text/plain", "supports_range": "false",
-                    "redistribution_status": "external_link_only", "is_public": "false",
-                },
-            ]
-            inventory = root / "inventory.tsv"
+            inventory_row = {
+                "asset_id": "public-fasta", "release_version": "v0.2.0", "source_id": "S1",
+                "assembly_accession": "GCF_TEST.1", "asset_role": "reference_fasta",
+                "asset_kind": "fasta", "bundle_path": "reference.fna", "canonical_path": "",
+                "object_path": "assemblies/GCF_TEST.1/reference/reference.fna",
+                "byte_size": str(browser_file.stat().st_size), "sha256": _sha256(browser_file),
+                "mime_type": "text/plain", "supports_range": "false",
+                "redistribution_status": "verified_redistributable", "is_public": "true",
+            }
             with inventory.open("w", encoding="utf-8", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=columns, delimiter="\t", lineterminator="\n")
                 writer.writeheader()
-                writer.writerows(rows)
+                writer.writerow(inventory_row)
+            assets = [
+                {
+                    "asset_id": "public-manifest", "release_version": "v0.2.0", "asset_kind": "metadata",
+                    "logical_path": "records/S1/manifest.json", "byte_size": release_file.stat().st_size,
+                    "sha256": _sha256(release_file), "mime_type": "application/json", "supports_range": False,
+                    "redistribution_status": "verified_redistributable", "is_public": True,
+                    "source_id_ref": "S1", "assembly_id_ref": None,
+                },
+                {
+                    "asset_id": "public-fasta", "release_version": "v0.2.0", "asset_kind": "fasta",
+                    "logical_path": inventory_row["object_path"], "byte_size": browser_file.stat().st_size,
+                    "sha256": inventory_row["sha256"], "mime_type": "text/plain", "supports_range": False,
+                    "redistribution_status": "verified_redistributable", "is_public": True,
+                    "source_id_ref": None, "assembly_id_ref": "GCF_TEST.1",
+                },
+                {
+                    "asset_id": "private-checksum", "release_version": "v0.2.0", "asset_kind": "checksum",
+                    "logical_path": "records/S1/SHA256SUMS.txt", "byte_size": 1, "sha256": "a" * 64,
+                    "mime_type": "text/plain", "supports_range": False,
+                    "redistribution_status": "external_link_only", "is_public": False,
+                    "source_id_ref": "S1", "assembly_id_ref": None,
+                },
+            ]
+            staging = _write_materialized_bundle(root / "staging", assets)
             output = root / "output"
             manifest = module.prepare_public_asset_objects(
+                materialized_bundle=staging,
                 inventory_path=inventory,
                 bundle=bundle,
                 release_root=release,
                 output_dir=output,
             )
-            destination = output / "assemblies/GCF_TEST.1/reference/reference.fna"
-            self.assertEqual(destination.read_bytes(), public_source.read_bytes())
-            self.assertFalse((output / "records/S1/endpoints.bed").exists())
-            self.assertEqual(manifest["selection"]["selected_count"], 1)
-            sums = (output / "SHA256SUMS.txt").read_text(encoding="utf-8")
-            self.assertIn("ASSET_OBJECTS.json", sums)
-            self.assertIn("assemblies/GCF_TEST.1/reference/reference.fna", sums)
+            self.assertEqual(manifest["selection"]["selected_count"], 2)
+            self.assertEqual(manifest["selection"]["excluded_count"], 1)
+            self.assertEqual((output / "records/S1/manifest.json").read_bytes(), release_file.read_bytes())
+            self.assertEqual((output / "assemblies/GCF_TEST.1/reference/reference.fna").read_bytes(), browser_file.read_bytes())
+            self.assertFalse((output / "records/S1/SHA256SUMS.txt").exists())
             with self.assertRaises(module.AssetPreparationError):
                 module.prepare_public_asset_objects(
+                    materialized_bundle=staging,
                     inventory_path=inventory,
                     bundle=bundle,
                     release_root=release,
