@@ -4,8 +4,8 @@
 
 **当前分支：** `feature/bted-v0.3-dynamic-service`
 
-**当前里程碑：** v0.3.0 第一里程碑已完成架构契约、PostgreSQL schema 骨架和静态测试；
-没有实现前端/API/部署或新数据导入。
+**当前里程碑：** v0.3.0 已完成架构契约、PostgreSQL schema 骨架和只读 canonical
+release 校验/导入计划；没有实现真实 PostgreSQL 写库、前端/API/部署。
 
 ## 2026-08-21 v0.3 架构与数据库骨架
 
@@ -30,13 +30,36 @@
 - `tests/test_bted_v03_schema.py`：11/11 PASS；与 `tests/test_bted_ingestion.py` 合计
   15/15 PASS；完整 `unittest discover` 为 32/32 PASS；`git diff --check` PASS。
 
+## 2026-08-21 v0.3 canonical release 校验器
+
+- `backend/importer/canonical.py` 是无 PostgreSQL 依赖的只读校验器；先解析并验证 release
+  entry 声明的 `records/<source>/manifest.json` 作为 canonical source manifest，
+  `data/registry/manifests` 只作 audit 交叉核对；随后检查 24 列 endpoints、BED 坐标、
+  证据、PMID/DOI、annotation 外键、必要文件、逐项 `SHA256SUMS.txt` 与 S1_002 audit-only
+  边界。
+- `scripts/import_bted_v03.py validate --release-root data/public/v0.2.0` 输出 JSON；
+  `--plan-json` 保存确定性行数/键摘要。它不执行 INSERT，`write_mode` 固定为
+  `not_written`；plan 另有 `canonical_validation_status` 和
+  `postgresql_ready` 两个状态，避免把校验通过误认为可以直接写库。
+- 真实 v0.2.0 预检结果：22 source / 21 published / 1 audit-only / 28,399 endpoint；
+  19/3 augmentation；13 publication、20 assembly、47 contig、21 sample、32 accession、
+  17 个 source annotation 文件（24,887 行），并生成 127 个已验证小型 canonical assets。
+  计划另含 1 个 `import_runs`、零行 `genes`/`endpoint_gene_context`；47 个 contig 长度
+  仍标为 unresolved，未用端点最大坐标猜测。
+- `tests/test_bted_v03_importer.py`：15/15 PASS；与既有 schema/ingestion 测试合计 22/22
+  PASS；完整测试当前 47/47 PASS；`git diff --check` PASS。plan 的 127 个 asset 使用不含
+  `/` 的稳定 asset_id、schema asset_kind 和 `is_public`；accession 使用
+  `accession_namespace`/accession/raw_value。
+
 ### 接手后的下一步
 
-1. 在目标 PostgreSQL 版本执行 DDL smoke test，补充 importer 的 staging/atomic switch
+1. 从各个引用的参考 FASTA/assembly metadata 核实 47 个 contig 的 `length_bp`，保存
+   accession、版本和 checksum；不能从 endpoint 坐标推断长度。
+2. 在目标 PostgreSQL 版本执行 DDL smoke test，补充 importer 的 staging/atomic switch
    和 release checksum 校验；不要先连接生产或改写 v0.2 文件。
-2. 根据 API 契约实现 FastAPI 只读查询和同源 asset Range 代理，先用本地 fixture 验证
+3. 根据 API 契约实现 FastAPI 只读查询和同源 asset Range 代理，先用本地 fixture 验证
    404/422、provenance、JBrowse deep link 与单 Range 206/416。
-3. 只有契约和 importer 评审通过后，才安排 Render/Neon/Vercel/Hugging Face 部署；
+4. 只有契约和 importer 评审通过后，才安排 Render/Neon/Vercel/Hugging Face 部署；
    gene context、外部协作者数据、NCBI 新数据和训练集仍需单独任务。
 
 ## 2026-08-17 核心字段页面

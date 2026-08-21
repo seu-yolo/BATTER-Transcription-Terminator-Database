@@ -58,6 +58,57 @@ PostgreSQL 资源。
 - DDL 无 seed data，v0.3.0 的首次数据导入必须重新核对 release manifest checksum、
   source manifest、许可和 24 列行数，保持 v0.2 文件不变。
 
+## 2026-08-21 —— v0.3 第二里程碑：只读 canonical 校验与导入计划
+
+**分支：** `feature/bted-v0.3-dynamic-service`
+**范围：** 只检查当前 v0.2.0 canonical release，并输出未来写入 PostgreSQL 的确定性
+行数/键摘要；没有连接数据库、没有写库、没有修改 v0.2 数据或网站。
+
+### 完成内容
+
+1. 新增 `backend/importer/canonical.py` 和 `backend/importer/__init__.py`：先解析 release
+   entry 声明且 checksum 验证通过的 `records/<source>/manifest.json` 作为 canonical
+   source manifest；`data/registry/manifests` 仅作 audit 交叉核对。同步读取 24 列
+   endpoint、BED、许可允许的来源附表和 SHA-256；错误保留 source/file/line 定位。
+2. 校验 source/end_id/sample、`+/-` strand、1-based 与 BED6 的单碱基转换、endpoint
+   evidence、PMID/DOI 一致性、annotation `end_id` 外键和 S1_002 audit-only 边界；不跨
+   contig 匹配，不把预测/混合证据升级为实验端点。
+3. 强制每个 source 声明并实际提供基础文件；published source 还需 endpoint BED/TSV，
+   `source_annotations_status=published` 还需附表。逐条核验 `SHA256SUMS.txt` 与实际
+   文件及 release entry 的摘要；release/registry source 集必须完全一致，相同 PMID 和
+   带版本 assembly 的元数据必须一致。
+4. 新增 `scripts/import_bted_v03.py validate`。真实 v0.2.0 结果为 22 source、21
+   published、1 audit-only、28,399 endpoint、19/3 augmentation、13 publication、20
+   assembly、47 contig、21 sample、32 source accession、17 个来源附表（24,887 行），
+   并规划 127 个已验证小型 canonical assets。`--plan-json` 可保存不写库的确定性计划；
+   计划增加 `import_runs`、assets、schema 对齐的 `accession_namespace`/accession/raw_value
+   和零行的 genes/endpoint_gene_context；asset_id 改为不含 `/` 的单段 API key，asset_kind
+   使用 schema 枚举，字段使用 `is_public`。未知 contig 长度保留为 unresolved，计划明确
+   `canonical_validation_status=validated` 但 `postgresql_ready=false`。
+5. 新增 `docs/v0.3/importer.md`，补充 canonical manifest、必要文件、checksum、资产、
+   命名空间、校验边界、命令、当前统计、错误含义和后续 staging importer 约束；同步
+   更新 `backend/database/README.md`、本交接日志和 HANDOFF。
+6. 新增 `tests/test_bted_v03_importer.py`：真实 release happy path，以及临时小 fixture
+   下的坐标错误、annotation orphan、audit-only 错误 endpoint、canonical manifest 篡改、
+   必要文件缺失/未声明、SHA256SUMS 不一致/未声明条目、registry extra source、相同 PMID
+   元数据冲突、错误 release version 和 CLI plan 输出；不复制完整大型 release。
+
+### 验证
+
+- `python3 -m unittest -v tests/test_bted_v03_importer.py`：15/15 PASS；
+- `python3 -m unittest -v tests/test_bted_v03_schema.py tests/test_bted_ingestion.py`：15/15 PASS；
+- `python3 -m unittest discover -s tests -p 'test*.py' -v`：47/47 PASS；
+- `python3 scripts/import_bted_v03.py validate --release-root data/public/v0.2.0`：JSON
+  `ok=true`；
+- `git diff --check`：PASS。
+
+### 未完成与风险
+
+- 还没有 psycopg/真实 PostgreSQL staging/atomic switch；`plan` 不是 INSERT 结果。
+- 47 个 contig 的长度不在 endpoint 表中，必须从各自参考 FASTA/assembly metadata 核实，
+  当前不猜测；随后才能满足 schema `contigs.length_bp`。
+- FastAPI/Next.js、Range 资产代理、JBrowse 服务配置、Neon/Render/Vercel 部署仍未开始。
+
 ## 2026-08-17 —— accession 页面收敛为既有核心字段
 
 **分支：** `feature/research-user-dataset-context-v0.1`

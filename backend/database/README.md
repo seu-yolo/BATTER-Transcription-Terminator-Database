@@ -59,3 +59,31 @@ endpoint 行。`BATTER_S1_002` 可有 source/manifest/accession 审计信息，�
 本目录不要求本机安装 PostgreSQL。`schema.sql` 由静态 unittest 检查关键表、24 列
 映射、release/source/contig/sample 外键、19/3 augmentation 边界和 prediction evidence
 拒绝规则；未来连接 Neon 前还需要在目标 PostgreSQL 版本执行 DDL 并补充迁移 smoke test。
+
+## v0.3 只读导入预检
+
+第二里程碑新增 `backend/importer/canonical.py` 和
+`scripts/import_bted_v03.py`。它们只读取 canonical release，先解析并 checksum 验证
+每个 release entry 声明的 `records/<source>/manifest.json`，再验证 registry 交叉审计、
+24 列 endpoint、BED 坐标、证据类别、论文 PMID/DOI、来源附表外键、所有发布文件的
+`SHA256SUMS.txt` 以及 S1_002 的 audit-only 边界；不会连接 PostgreSQL，也不会写入任何
+表。运行方式和错误定位见 [`docs/v0.3/importer.md`](../../docs/v0.3/importer.md)。
+
+```bash
+python3 scripts/import_bted_v03.py validate \
+  --release-root data/public/v0.2.0 \
+  --plan-json /tmp/bted-v03-import-plan.json
+```
+
+输出的 `plan` 只是一份确定性的未来写库行数/键摘要，`write_mode` 为
+`not_written`；它不是 PostgreSQL 快照，且明确包含 `import_runs`、`assets`、零行的
+`genes`/`endpoint_gene_context`。当前真实 v0.2.0 预检为 22 个 source、21 个
+published、1 个 audit-only、28,399 条 endpoint，publication/assembly/contig/sample/
+accession/source-annotation 数量分别为 13/20/47/21/32/17 个文件（24,887 行附表），
+并规划 127 个已验证的小型 canonical assets。contig 长度不在端点表中，plan 明确列为
+unresolved；因此 `canonical_validation_status=validated`，但
+`postgresql_ready=false`，不能把校验通过误认为已满足 schema 的 NOT NULL length。
+不用坐标最大值猜测。只有未来从参考 FASTA 核实长度后，才可进入带 staging/atomic
+switch 的 PostgreSQL importer。plan 中的 assets 使用无 `/` 的稳定 asset_id、schema
+允许的 `asset_kind` 和 `is_public` 字段；source accession 使用
+`accession_namespace`，不把别名当作物理列。

@@ -1,0 +1,599 @@
+"""Tests for the read-only BTED v0.3 canonical-release validator."""
+
+from __future__ import annotations
+
+import csv
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+from backend.importer.canonical import V02_ENDPOINT_COLUMNS, validate_release
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+RELEASE_ROOT = REPO_ROOT / "data/public/v0.2.0"
+REGISTRY = REPO_ROOT / "data/registry/batter_s1_source_registry.tsv"
+REGISTRY_MANIFESTS = REPO_ROOT / "data/registry/manifests"
+
+
+def digest(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            value.update(block)
+    return value.hexdigest()
+
+
+def write_tsv(path: Path, fields: list[str], rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _source_row(source_id: str) -> dict[str, str]:
+    with REGISTRY.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    return next(row for row in rows if row["source_id"] == source_id)
+
+
+def _refresh_release_file_hashes(release_root: Path, source_id: str) -> None:
+    """Refresh one fixture entry and its per-source checksum file."""
+
+    release_path = release_root / "release_manifest.json"
+    release = json.loads(release_path.read_text(encoding="utf-8"))
+    entry = release["sources"][source_id]
+    record_root = release_root / "records" / source_id
+    non_checksum = [
+        record_root / str(item["path"])
+        for item in entry["files"]
+        if item["path"] != "SHA256SUMS.txt"
+    ]
+    (record_root / "SHA256SUMS.txt").write_text(
+        "".join(f"{digest(path)}  {path.name}\n" for path in sorted(non_checksum, key=lambda p: p.name)),
+        encoding="utf-8",
+    )
+    for item in entry["files"]:
+        item["sha256"] = digest(record_root / str(item["path"]))
+    release_path.write_text(json.dumps(release, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _append_registry_row(root: Path, row: dict[str, str]) -> None:
+    registry_path = root / "data/registry/batter_s1_source_registry.tsv"
+    with registry_path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        fields = list(reader.fieldnames or [])
+        rows = list(reader)
+    rows.append(row)
+    write_tsv(registry_path, fields, rows)
+
+
+def make_fixture(root: Path, source_id: str = "BATTER_S1_007") -> Path:
+    """Create a tiny release fixture; no large release tree is copied."""
+
+    release_root = root / "data/public/v0.2.0"
+    record_root = release_root / "records" / source_id
+    record_root.mkdir(parents=True)
+    registry_row = _source_row(source_id)
+    write_tsv(root / "data/registry/batter_s1_source_registry.tsv", list(registry_row), [registry_row])
+
+    source_manifest = json.loads(
+        (RELEASE_ROOT / "records" / source_id / "manifest.json").read_text(encoding="utf-8")
+    )
+    source_manifest["record_count"] = 1
+    manifest_path = record_root / "manifest.json"
+    manifest_path.write_text(json.dumps(source_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    registry_manifest_path = root / "data/registry/manifests" / f"{source_id}.json"
+    registry_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_manifest_path.write_text(
+        (REGISTRY_MANIFESTS / f"{source_id}.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    original_endpoint = RELEASE_ROOT / "records" / source_id / "endpoints.tsv"
+    with original_endpoint.open(encoding="utf-8", newline="") as handle:
+        row = next(csv.DictReader(handle, delimiter="\t"))
+    write_tsv(record_root / "endpoints.tsv", V02_ENDPOINT_COLUMNS, [row])
+    (record_root / "endpoints.bed").write_text(
+        "\t".join(
+            [
+                row["reference_name"],
+                row["bed_start_0based"],
+                row["bed_end_0based"],
+                row["end_id"],
+                "0",
+                row["strand"],
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    original_annotation = RELEASE_ROOT / "records" / source_id / "source_annotations.tsv"
+    with original_annotation.open(encoding="utf-8", newline="") as handle:
+        annotation_reader = csv.DictReader(handle, delimiter="\t")
+        annotation_fields = list(annotation_reader.fieldnames or [])
+        annotation_row = next(annotation_reader)
+    write_tsv(record_root / "source_annotations.tsv", annotation_fields, [annotation_row])
+    (record_root / "fields.json").write_text("{}\n", encoding="utf-8")
+
+    entry = {
+        "release_status": "published_standardized",
+        "record_count": 1,
+        "evidence_class": row["evidence_class"],
+        "record_root": f"data/public/v0.2.0/records/{source_id}",
+        "has_jbrowse": True,
+        "redistribution_status": "verified_redistributable",
+        "source_annotations_status": "published",
+        "files": [],
+    }
+    declared_paths = (
+        record_root / "endpoints.tsv",
+        record_root / "endpoints.bed",
+        record_root / "fields.json",
+        record_root / "manifest.json",
+        record_root / "source_annotations.tsv",
+    )
+    sums = "".join(f"{digest(path)}  {path.name}\n" for path in sorted(declared_paths, key=lambda p: p.name))
+    (record_root / "SHA256SUMS.txt").write_text(sums, encoding="utf-8")
+    for path in (*declared_paths, record_root / "SHA256SUMS.txt"):
+        entry["files"].append({"path": path.name, "sha256": digest(path)})
+    release = {
+        "release_version": "v0.2.0",
+        "release_date": "2026-08-10",
+        "schema": {"core": "24-column BTED endpoint schema"},
+        "summary": {
+            "source_count": 1,
+            "published_standardized_sources": 1,
+            "audit_only_sources": 0,
+            "published_record_count": 1,
+        },
+        "sources": {source_id: entry},
+    }
+    release_path = release_root / "release_manifest.json"
+    release_path.write_text(json.dumps(release, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return release_root
+
+
+def make_same_pmid_conflict_fixture(root: Path) -> Path:
+    """Create two tiny sources sharing a PMID but disagreeing on metadata."""
+
+    release_root = make_fixture(root, source_id="BATTER_S1_007")
+    source_id = "BATTER_S1_013"
+    source1 = release_root / "records/BATTER_S1_007"
+    source2 = release_root / "records" / source_id
+    source2.mkdir(parents=True)
+
+    # Start with the existing canonical row, then make source 2 a distinct
+    # source while deliberately retaining the PMID and changing the DOI/title.
+    manifest = json.loads((source1 / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(
+        {
+            "source_id": source_id,
+            "doi": "10.9999/bted-conflict",
+            "paper_title": "Conflicting publication metadata",
+            "published_year": "2099",
+            "record_count": 1,
+        }
+    )
+    (source2 / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    endpoint_path = source1 / "endpoints.tsv"
+    with endpoint_path.open(encoding="utf-8", newline="") as handle:
+        endpoint = next(csv.DictReader(handle, delimiter="\t"))
+    endpoint["source_id"] = source_id
+    endpoint["end_id"] = endpoint["end_id"].replace("BATTER_S1_007", source_id)
+    endpoint["doi"] = manifest["doi"]
+    write_tsv(source2 / "endpoints.tsv", V02_ENDPOINT_COLUMNS, [endpoint])
+    (source2 / "endpoints.bed").write_text(
+        "\t".join(
+            [
+                endpoint["reference_name"],
+                endpoint["bed_start_0based"],
+                endpoint["bed_end_0based"],
+                endpoint["end_id"],
+                "0",
+                endpoint["strand"],
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    annotation_path = source1 / "source_annotations.tsv"
+    with annotation_path.open(encoding="utf-8", newline="") as handle:
+        annotation_reader = csv.DictReader(handle, delimiter="\t")
+        annotation_fields = list(annotation_reader.fieldnames or [])
+        annotation = next(annotation_reader)
+    annotation["end_id"] = annotation["end_id"].replace("BATTER_S1_007", source_id)
+    if "source_id" in annotation:
+        annotation["source_id"] = source_id
+    if "doi" in annotation:
+        annotation["doi"] = manifest["doi"]
+    write_tsv(source2 / "source_annotations.tsv", annotation_fields, [annotation])
+    (source2 / "fields.json").write_text("{}\n", encoding="utf-8")
+
+    # The legacy registry manifest is made consistent with source 2 so this
+    # fixture isolates the shared-PMID conflict rather than testing a stale
+    # legacy copy at the same time.
+    registry_manifest_path = root / "data/registry/manifests" / f"{source_id}.json"
+    registry_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    registry_row = _source_row(source_id)
+    registry_row.update(
+        {
+            "pmid": manifest["pmid"],
+            "doi": manifest["doi"],
+            "paper_title": manifest["paper_title"],
+            "published_year": manifest["published_year"],
+            "species": manifest["species"],
+            "reference_genome": manifest["reference_genome"],
+            "raw_data_accessions": "GSE-CONFLICT",
+        }
+    )
+    _append_registry_row(root, registry_row)
+
+    entry = {
+        "release_status": "published_standardized",
+        "record_count": 1,
+        "evidence_class": endpoint["evidence_class"],
+        "record_root": f"data/public/v0.2.0/records/{source_id}",
+        "has_jbrowse": True,
+        "redistribution_status": "verified_redistributable",
+        "source_annotations_status": "published",
+        "files": [],
+    }
+    declared_paths = (
+        source2 / "endpoints.bed",
+        source2 / "endpoints.tsv",
+        source2 / "fields.json",
+        source2 / "manifest.json",
+        source2 / "source_annotations.tsv",
+    )
+    (source2 / "SHA256SUMS.txt").write_text(
+        "".join(f"{digest(path)}  {path.name}\n" for path in sorted(declared_paths, key=lambda p: p.name)),
+        encoding="utf-8",
+    )
+    for path in (*declared_paths, source2 / "SHA256SUMS.txt"):
+        entry["files"].append({"path": path.name, "sha256": digest(path)})
+    release = json.loads((release_root / "release_manifest.json").read_text(encoding="utf-8"))
+    release["summary"].update(
+        {
+            "source_count": 2,
+            "published_standardized_sources": 2,
+            "audit_only_sources": 0,
+            "published_record_count": 2,
+        }
+    )
+    release["sources"][source_id] = entry
+    (release_root / "release_manifest.json").write_text(
+        json.dumps(release, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return release_root
+
+
+def make_audit_fixture(root: Path) -> Path:
+    """Create an audit-only S1_002 fixture with one forbidden endpoint file."""
+
+    release_root = root / "data/public/v0.2.0"
+    record_root = release_root / "records/BATTER_S1_002"
+    record_root.mkdir(parents=True)
+    row = _source_row("BATTER_S1_002")
+    write_tsv(root / "data/registry/batter_s1_source_registry.tsv", list(row), [row])
+    source_manifest = json.loads((REGISTRY_MANIFESTS / "BATTER_S1_002.json").read_text(encoding="utf-8"))
+    manifest_path = root / "data/registry/manifests/BATTER_S1_002.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(source_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    with (RELEASE_ROOT / "records/BATTER_S1_007/endpoints.tsv").open(encoding="utf-8", newline="") as handle:
+        endpoint_row = next(csv.DictReader(handle, delimiter="\t"))
+    endpoint_row["source_id"] = "BATTER_S1_002"
+    write_tsv(record_root / "endpoints.tsv", V02_ENDPOINT_COLUMNS, [endpoint_row])
+    release = {
+        "release_version": "v0.2.0",
+        "summary": {"source_count": 1, "published_standardized_sources": 0, "audit_only_sources": 1, "published_record_count": 0},
+        "sources": {
+            "BATTER_S1_002": {
+                "release_status": "audit_only",
+                "record_count": 0,
+                "evidence_class": "NA",
+                "record_root": "data/public/v0.2.0/records/BATTER_S1_002",
+                "has_jbrowse": False,
+                "redistribution_status": "audit_only",
+                "files": [],
+            }
+        },
+    }
+    (release_root / "release_manifest.json").write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
+    return release_root
+
+
+class TestBtedV03Importer(unittest.TestCase):
+    def test_real_v02_release_is_happy_path_and_plan_is_deterministic(self) -> None:
+        first = validate_release(RELEASE_ROOT)
+        second = validate_release(RELEASE_ROOT)
+        self.assertTrue(first.ok, [issue.as_dict() for issue in first.issues[:5]])
+        self.assertEqual(first.plan, second.plan)
+        self.assertEqual(first.summary["source_count"], 22)
+        self.assertEqual(first.summary["published_standardized_sources"], 21)
+        self.assertEqual(first.summary["audit_only_sources"], 1)
+        self.assertEqual(first.summary["published_record_count"], 28_399)
+        self.assertEqual(first.summary["augmentation_true"], 19)
+        self.assertEqual(first.summary["augmentation_false"], 3)
+        self.assertEqual(first.summary["publication_count"], 13)
+        self.assertEqual(first.summary["assembly_count"], 20)
+        self.assertEqual(first.summary["contig_count"], 47)
+        self.assertEqual(first.summary["sample_count"], 21)
+        self.assertEqual(first.summary["source_accession_count"], 32)
+        self.assertEqual(first.summary["source_annotation_table_count"], 17)
+        self.assertEqual(first.summary["source_annotation_record_count"], 24_887)
+        self.assertEqual(first.plan["write_mode"], "not_written")
+        self.assertEqual(first.plan["canonical_validation_status"], "validated")
+        self.assertFalse(first.plan["postgresql_ready"])
+        self.assertEqual(first.plan["tables"]["import_runs"]["row_count"], 1)
+        self.assertEqual(first.plan["tables"]["assets"]["row_count"], 127)
+        self.assertTrue(
+            all(
+                {"asset_id", "logical_path", "source_id", "asset_kind", "sha256", "byte_size", "is_public"}
+                <= set(asset)
+                for asset in first.plan["tables"]["assets"]["keys"]
+            )
+        )
+        self.assertTrue(
+            all("/" not in asset["asset_id"] for asset in first.plan["tables"]["assets"]["keys"])
+        )
+        self.assertTrue(
+            {
+                asset["asset_kind"] for asset in first.plan["tables"]["assets"]["keys"]
+            }
+            <= {
+                "fasta",
+                "fai",
+                "gff3",
+                "tbi",
+                "bigwig",
+                "bed",
+                "config",
+                "metadata",
+                "checksum",
+                "archive",
+                "source_annotation",
+            }
+        )
+        self.assertTrue(
+            all(
+                {"accession_namespace", "accession", "raw_value"} <= set(accession)
+                for accession in first.plan["tables"]["source_accessions"]["keys"]
+            )
+        )
+        self.assertTrue(
+            all(
+                accession["accession_namespace"] in {"GEO", "SRA", "ENA", "BioStudies"}
+                for accession in first.plan["tables"]["source_accessions"]["keys"]
+            )
+        )
+        self.assertEqual(first.plan["tables"]["genes"]["row_count"], 0)
+        self.assertEqual(first.plan["tables"]["endpoint_gene_context"]["row_count"], 0)
+        self.assertTrue(first.summary["unresolved"])
+
+    def test_coordinate_error_has_source_file_and_line(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            endpoint_path = release_root / "records/BATTER_S1_007/endpoints.tsv"
+            lines = endpoint_path.read_text(encoding="utf-8").splitlines()
+            fields = lines[0].split("\t")
+            values = lines[1].split("\t")
+            values[fields.index("bed_start_0based")] = str(int(values[fields.index("bed_start_0based")]) - 1)
+            endpoint_path.write_text("\n".join([lines[0], "\t".join(values)]) + "\n", encoding="utf-8")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(
+                any(
+                    issue.source_id == "BATTER_S1_007"
+                    and issue.line == 2
+                    and "坐标转换" in issue.message
+                    for issue in report.issues
+                )
+            )
+
+    def test_annotation_orphan_has_source_file_and_line(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            annotation_path = release_root / "records/BATTER_S1_007/source_annotations.tsv"
+            lines = annotation_path.read_text(encoding="utf-8").splitlines()
+            fields = lines[0].split("\t")
+            values = lines[1].split("\t")
+            values[fields.index("end_id")] = "BTED_BATTER_S1_007_ORPHAN"
+            annotation_path.write_text("\n".join([lines[0], "\t".join(values)]) + "\n", encoding="utf-8")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any(issue.line == 2 and "annotation end_id" in issue.message for issue in report.issues))
+
+    def test_audit_only_cannot_have_endpoint_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = validate_release(make_audit_fixture(root), repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any(issue.source_id == "BATTER_S1_002" and "audit_only" in issue.message for issue in report.issues))
+
+    def test_manifest_row_count_mismatch_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            release_path = release_root / "release_manifest.json"
+            release = json.loads(release_path.read_text(encoding="utf-8"))
+            release["summary"]["published_record_count"] = 2
+            release["sources"]["BATTER_S1_007"]["record_count"] = 2
+            release_path.write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any("record_count" in issue.message for issue in report.issues))
+
+    def test_canonical_record_manifest_is_the_import_truth(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            manifest_path = release_root / "records/BATTER_S1_007/manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["paper_title"] = "Tampered canonical title"
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            _refresh_release_file_hashes(release_root, "BATTER_S1_007")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(
+                any(
+                    issue.source_id == "BATTER_S1_007"
+                    and "来源 manifest paper_title 与 registry" in issue.message
+                    and issue.file.endswith("records/BATTER_S1_007/manifest.json")
+                    for issue in report.issues
+                )
+            )
+
+    def test_required_file_must_be_declared(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            release_path = release_root / "release_manifest.json"
+            release = json.loads(release_path.read_text(encoding="utf-8"))
+            entry = release["sources"]["BATTER_S1_007"]
+            entry["files"] = [item for item in entry["files"] if item["path"] != "fields.json"]
+            release_path.write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any("未声明必要文件: fields.json" in issue.message for issue in report.issues))
+
+    def test_required_file_must_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            (release_root / "records/BATTER_S1_007/fields.json").unlink()
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any("声明的文件不存在: fields.json" in issue.message for issue in report.issues))
+
+    def test_sha256sums_entry_must_match_actual_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            sums_path = release_root / "records/BATTER_S1_007/SHA256SUMS.txt"
+            lines = sums_path.read_text(encoding="utf-8").splitlines()
+            lines[0] = ("0" * 64) + lines[0][64:]
+            sums_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            _refresh_release_file_hashes(release_root, "BATTER_S1_007")
+            # Refreshing would repair the mutation, so apply it after the
+            # release entry has been refreshed and update only the checksum
+            # file's release hash.
+            lines = sums_path.read_text(encoding="utf-8").splitlines()
+            lines[0] = ("0" * 64) + lines[0][64:]
+            sums_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            release_path = release_root / "release_manifest.json"
+            release = json.loads(release_path.read_text(encoding="utf-8"))
+            for item in release["sources"]["BATTER_S1_007"]["files"]:
+                if item["path"] == "SHA256SUMS.txt":
+                    item["sha256"] = digest(sums_path)
+            release_path.write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any("SHA256SUMS 与实际文件不一致" in issue.message for issue in report.issues))
+
+    def test_sha256sums_undeclared_entry_is_structured_issue(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            sums_path = release_root / "records/BATTER_S1_007/SHA256SUMS.txt"
+            with sums_path.open("a", encoding="utf-8") as handle:
+                handle.write("" + ("0" * 64) + "  not-declared.tsv\n")
+            release_path = release_root / "release_manifest.json"
+            release = json.loads(release_path.read_text(encoding="utf-8"))
+            for item in release["sources"]["BATTER_S1_007"]["files"]:
+                if item["path"] == "SHA256SUMS.txt":
+                    item["sha256"] = digest(sums_path)
+            release_path.write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(
+                any(
+                    issue.source_id == "BATTER_S1_007"
+                    and issue.line == 1
+                    and "条目未在 release manifest 声明" in issue.message
+                    for issue in report.issues
+                )
+            )
+
+    def test_release_version_must_be_semver(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            release_path = release_root / "release_manifest.json"
+            release = json.loads(release_path.read_text(encoding="utf-8"))
+            release["release_version"] = "v0.2"
+            release_path.write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any("vMAJOR.MINOR.PATCH" in issue.message for issue in report.issues))
+
+    def test_canonical_manifest_release_version_must_match_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            manifest_path = release_root / "records/BATTER_S1_007/manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["release_version"] = "v9.9.9"
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            _refresh_release_file_hashes(release_root, "BATTER_S1_007")
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any("release_version 与根 release 不一致" in issue.message for issue in report.issues))
+
+    def test_registry_extra_source_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            extra = _source_row("BATTER_S1_013")
+            _append_registry_row(root, extra)
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any("registry source 未出现在 release manifest" in issue.message for issue in report.issues))
+
+    def test_same_pmid_metadata_conflict_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_same_pmid_conflict_fixture(root)
+            report = validate_release(release_root, repo_root=root)
+            self.assertFalse(report.ok)
+            self.assertTrue(any("相同 PMID" in issue.message for issue in report.issues))
+
+    def test_cli_writes_plan_and_reports_asset_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            plan_path = root / "plan.json"
+            command = [
+                sys.executable,
+                str(REPO_ROOT / "scripts/import_bted_v03.py"),
+                "validate",
+                "--repo-root",
+                str(root),
+                "--release-root",
+                str(release_root),
+                "--plan-json",
+                str(plan_path),
+            ]
+            completed = subprocess.run(command, check=False, capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            output = json.loads(completed.stdout)
+            saved_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            self.assertTrue(output["ok"])
+            self.assertEqual(saved_plan["tables"]["import_runs"]["row_count"], 1)
+            self.assertGreater(saved_plan["tables"]["assets"]["row_count"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
