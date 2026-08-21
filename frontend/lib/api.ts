@@ -56,6 +56,7 @@ export type Source = {
     manifest?: string;
     endpoints_download?: string;
     jbrowse?: string | null;
+    jbrowse_config?: string | null;
     jbrowse_note?: string;
   };
   provenance: Record<string, unknown>;
@@ -75,6 +76,7 @@ export type Assembly = {
   source_count: number;
   endpoint_count: number;
   source_tracks: Array<{ source_id: string; record_count?: number }>;
+  links?: { jbrowse?: string | null; jbrowse_config?: string | null };
   provenance: Record<string, unknown>;
 };
 

@@ -231,7 +231,8 @@ class PostgresReadRepository:
             "FROM source_accessions AS sa WHERE sa.source_pk = s.source_pk), '[]'::json), "
             "COALESCE((SELECT json_agg(json_build_object("
             "'asset_id', aa.asset_id, 'asset_kind', aa.asset_kind, 'logical_path', aa.logical_path, "
-            "'sha256', aa.sha256"
+            "'sha256', aa.sha256, 'byte_size', aa.byte_size, 'mime_type', aa.mime_type, "
+            "'supports_range', aa.supports_range"
             ") ORDER BY aa.asset_id) FROM assets AS aa "
             "WHERE aa.release_version = s.release_version AND aa.source_pk = s.source_pk "
             "AND aa.is_public = TRUE), '[]'::json)"
@@ -399,17 +400,27 @@ class PostgresReadRepository:
             "COALESCE((SELECT json_agg(json_build_object('accession', c.contig_accession, "
             "'name', c.contig_name, 'length_bp', c.length_bp, 'sequence_sha256', c.sequence_sha256) "
             "ORDER BY c.contig_accession) FROM contigs AS c WHERE c.assembly_id = a.assembly_id), '[]'::json), "
+            "COALESCE((SELECT json_agg(json_build_object('asset_id', aa.asset_id, 'asset_kind', aa.asset_kind, "
+            "'logical_path', aa.logical_path, 'sha256', aa.sha256, 'byte_size', aa.byte_size, "
+            "'mime_type', aa.mime_type, 'supports_range', aa.supports_range) ORDER BY aa.asset_id) "
+            "FROM assets AS aa WHERE aa.release_version = %s AND aa.assembly_id = a.assembly_id "
+            "AND aa.is_public = TRUE), '[]'::json), "
             "COALESCE((SELECT json_agg(json_build_object('source_id', ss.source_id, "
             "'record_count', ss.record_count, 'evidence_class', ss.evidence_class, "
-            "'release_status', ss.release_status, 'has_jbrowse', ss.has_jbrowse) ORDER BY ss.source_id) "
+            "'release_status', ss.release_status, 'has_jbrowse', ss.has_jbrowse, "
+            "'assets', COALESCE((SELECT json_agg(json_build_object('asset_id', sa.asset_id, "
+            "'asset_kind', sa.asset_kind, 'logical_path', sa.logical_path, 'sha256', sa.sha256, "
+            "'byte_size', sa.byte_size, 'mime_type', sa.mime_type, 'supports_range', sa.supports_range) "
+            "ORDER BY sa.asset_id) FROM assets AS sa WHERE sa.release_version = ss.release_version "
+            "AND sa.source_pk = ss.source_pk AND sa.is_public = TRUE), '[]'::json)) ORDER BY ss.source_id) "
             "FROM sources AS ss WHERE ss.release_version = %s AND ss.assembly_id = a.assembly_id), '[]'::json), "
             "(SELECT COUNT(*) FROM endpoints AS ee JOIN sources AS es ON es.release_version = ee.release_version "
             "AND es.source_pk = ee.source_pk WHERE ee.release_version = %s AND es.assembly_id = a.assembly_id)"
         )
         count_params = list(params)
-        # The two release placeholders occur in the SELECT subqueries before
+        # The three release placeholders occur in the SELECT subqueries before
         # the filter placeholders in WHERE.
-        query_params = [release.release_version, release.release_version, *params, limit, offset]
+        query_params = [release.release_version, release.release_version, release.release_version, *params, limit, offset]
         with self._cursor() as cursor:
             cursor.execute(f"SELECT COUNT(*) FROM assemblies AS a WHERE {where}", tuple(count_params))
             total = int(cursor.fetchone()[0])
@@ -429,8 +440,9 @@ class PostgresReadRepository:
                 "taxon_id": row[5],
                 "reference_url": row[6],
                 "contigs": _json_value(row[7], []),
-                "source_tracks": _json_value(row[8], []),
-                "endpoint_count": int(row[9]),
+                "assets": _json_value(row[8], []),
+                "source_tracks": _json_value(row[9], []),
+                "endpoint_count": int(row[10]),
             })
         return rows, total
 
@@ -444,6 +456,21 @@ class PostgresReadRepository:
             descending=False,
         )
         return rows[0] if rows else None
+
+    def get_jbrowse_bundle(self, release: ReleaseContext, assembly_accession: str) -> Mapping[str, Any] | None:
+        """Return one assembly plus its public source rows for config building."""
+
+        assembly = self.get_assembly(release, assembly_accession)
+        if assembly is None:
+            return None
+        sources: list[Mapping[str, Any]] = []
+        for track in assembly.get("source_tracks", []):
+            if not isinstance(track, Mapping) or not track.get("source_id"):
+                continue
+            source = self.get_source(release, str(track["source_id"]))
+            if source is not None:
+                sources.append(source)
+        return {"assembly": assembly, "sources": sources}
 
     @staticmethod
     def _endpoint_select(*, include_annotation_summary: bool = False) -> str:

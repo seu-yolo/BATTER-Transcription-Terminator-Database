@@ -212,8 +212,9 @@ class TestBtedV03ApiService(unittest.TestCase):
     def test_sources_and_audit_only_links(self) -> None:
         result = self.service.source_detail(None, "BATTER_S1_007")
         self.assertIn("endpoints_download", result["links"])
-        self.assertIn("%2Fapi%2Fv1%2Fassets%2FBATTER_S1_007--config", result["links"]["jbrowse"])
-        self.assertIn("config=", result["links"]["jbrowse"])
+        self.assertIn("%2Fapi%2Fv1%2Fassemblies%2FGCF_000739105.1%2Fjbrowse-config", result["links"]["jbrowse"])
+        self.assertIn("source_id%3DBATTER_S1_007", result["links"]["jbrowse"])
+        self.assertIn("jbrowse-config?source_id=BATTER_S1_007", result["links"]["jbrowse_config"])
         audit = self.service.source_detail(None, "BATTER_S1_002")
         self.assertEqual(audit["record_count"], 0)
         self.assertNotIn("endpoints_download", audit["links"])

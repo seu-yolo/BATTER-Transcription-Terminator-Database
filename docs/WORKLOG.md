@@ -884,3 +884,35 @@ v0.2 canonical release、旧 site 或数据文件，不安装依赖，不连接�
 - 在已有 Node 依赖环境执行 `pnpm run build`：通过（Next.js 编译、类型检查、静态页面生成
   均成功）。本轮没有执行真实浏览器 smoke test 或生产 API/数据库连接。
 - 前端只消费 C1/C2 已有 API；尚未实现多语言、gene context 计算或生产部署。
+
+## 2026-08-22 —— v0.3 第三阶段 D2：assembly 级动态 JBrowse 配置
+
+**范围：** 增加只读动态浏览器配置查询；假定 FASTA/FAI/GFF3/TBI/BigWig/BED 已作为
+checksum 资产登记在当前 release 的 `assets` 表中。不下载新数据、不修改 v0.2 canonical
+release/site、不连接真实数据库、不提交推送。
+
+### 完成内容
+
+1. 新增 `GET /api/v1/assemblies/{assembly_id}/jbrowse-config`。repository 返回一个
+   assembly bundle（assembly 公共资产 + published source 公共资产），service 用固定
+   builder 生成 JBrowse JSON；所有轨道 URL 均为同源 `/api/v1/assets/{asset_id}`。
+2. 一个 assembly 共用一套 reference sequence；每个 published source 仍是独立 BED
+   endpoint track。轨道 metadata 保留 paper PMID/DOI、raw GEO/SRA/ENA accession URL、
+   evidence、record count 和 manifest provenance。S1_002/audit-only source 被排除。
+3. GFF3+TBI 存在时生成参考注释轨道，并在 metadata 说明标准 GFF3 strand/arrow direction。
+   BigWig 只有在已登记时显示；+/- 两个 raw BigWig 合并为一个 `MultiQuantitativeTrack`，
+   不取负、不 log、不归一化，metadata 明确 `normalization=none` 和
+   `display_transform=none`；单个 BigWig 保持单轨道。
+4. source/assembly API 的 JBrowse 链接改为动态 config endpoint；source link 将
+   `source_id` 放在 config endpoint 内部并整体 URL encode，assembly detail 在有 FASTA+FAI
+   和 published browser source 时提供 `Open JBrowse` 链接。前端 assembly detail 已显示该
+   按钮，缺资产时不伪造按钮。
+
+### 验证与限制
+
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v tests/test_bted_v03_browser.py tests/test_bted_v03_api.py tests/test_bted_v03_assets.py`：默认环境 21 项中 18 passed、3 项 FastAPI runtime skipped；主代理在隔离 venv 安装 `requirements-v03.txt` 后完成 FastAPI runtime 验收，API/assets 与全量 `unittest discover` 均为 98/98 PASS（仅有 Starlette deprecation warning）。
+- `tests/test_bted_v03_browser.py` 覆盖 shared assembly、2 个 source（含 audit-only 排除）、
+  GFF3、metadata links、无 BigWig、双 BigWig compact raw signal 和 source 默认轨道。
+- 尚未在真实 PostgreSQL 或真实 JBrowse 浏览器中 smoke test；当前 v0.2 B1 小型 canonical
+  assets 尚未包含浏览器参考/信号资产，因此实际数据入库需下一阶段补齐并重新物化，不在本轮
+  猜测生成 FASTA/GFF3/BigWig。

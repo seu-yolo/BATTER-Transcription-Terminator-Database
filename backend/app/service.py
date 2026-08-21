@@ -16,6 +16,7 @@ from urllib.parse import quote, urlencode
 from backend.importer.canonical import V02_ENDPOINT_COLUMNS
 
 from .assets import AssetProxyResponse, AssetProxyService
+from .browser import BrowserConfigUnavailable, build_jbrowse_config
 from .contracts import Page, ReadRepository, ReleaseContext, RepositoryNotFound, RepositoryUnavailable
 from .errors import ApiError, invalid, not_found
 
@@ -191,10 +192,6 @@ class ReadService:
             (asset for asset in assets if isinstance(asset, Mapping) and str(asset.get("logical_path", "")).endswith("manifest.json")),
             None,
         )
-        config_asset = next(
-            (asset for asset in assets if isinstance(asset, Mapping) and asset.get("asset_kind") == "config"),
-            None,
-        )
         links: dict[str, Any] = {"bted_record": f"/sources/{quote(source_id)}"}
         if manifest_asset and manifest_asset.get("asset_id"):
             links["manifest"] = f"/api/v1/assets/{quote(str(manifest_asset['asset_id']))}"
@@ -203,13 +200,17 @@ class ReadService:
                 f"/api/v1/downloads/endpoints?release_version={quote(release.release_version)}"
                 f"&source_id={quote(source_id)}"
             )
-            if row.get("has_jbrowse") and config_asset and config_asset.get("asset_id"):
-                config_url = f"/api/v1/assets/{quote(str(config_asset['asset_id']), safe='')}"
+            if row.get("has_jbrowse"):
                 assembly_accession = assembly.get("accession")
-                query: dict[str, str] = {"config": config_url}
                 if assembly_accession:
-                    query["assembly"] = str(assembly_accession)
-                links["jbrowse"] = self.jbrowse_base + "?" + urlencode(query)
+                    config_url = f"/api/v1/assemblies/{quote(str(assembly_accession), safe='')}/jbrowse-config"
+                    config_url = f"{config_url}?source_id={quote(source_id, safe='')}"
+                    query: dict[str, str] = {
+                        "config": config_url,
+                        "assembly": str(assembly_accession),
+                    }
+                    links["jbrowse_config"] = config_url
+                    links["jbrowse"] = self.jbrowse_base + "?" + urlencode(query)
         result = {
             "source_id": source_id,
             "release_status": row.get("release_status"),
@@ -218,12 +219,14 @@ class ReadService:
             "assay_family": row.get("assay_family"),
             "evidence_class": row.get("evidence_class"),
             "record_count": int(row.get("record_count", 0)),
+            "has_jbrowse": bool(row.get("has_jbrowse", False)),
             "used_for_batter_augmentation": bool(row.get("used_for_batter_augmentation", False)),
             "augmentation_eligible": bool(row.get("used_for_batter_augmentation", False)),
             "publication": publication,
             "assembly": dict(assembly),
             "accessions": accessions,
             "raw_accessions": accessions,
+            "assets": [dict(asset) for asset in assets if isinstance(asset, Mapping)],
             "links": links,
             "provenance": {
                 "release_version": release.release_version,
@@ -270,8 +273,7 @@ class ReadService:
             raise ApiError(503, "repository_unavailable", "query repository is unavailable", release_version=release.release_version) from exc
         return self._page_response(release, (self._assembly_item(release, row) for row in rows), total, page, page_size)
 
-    @staticmethod
-    def _assembly_item(release: ReleaseContext, row: Mapping[str, Any]) -> dict[str, Any]:
+    def _assembly_item(self, release: ReleaseContext, row: Mapping[str, Any]) -> dict[str, Any]:
         accession = row.get("assembly_accession")
         contigs = row.get("contigs", [])
         raw_tracks = row.get("source_tracks", [])
@@ -285,7 +287,7 @@ class ReadService:
                     track["links"] = {"source": f"/api/v1/sources/{quote(str(track['source_id']))}"}
                 track["provenance"] = {"release_version": release.release_version, "assembly_accession": accession}
                 tracks.append(track)
-        return {
+        result = {
             "assembly_accession": accession,
             "assembly_name": row.get("assembly_name"),
             "organism_name": row.get("organism_name"),
@@ -293,6 +295,7 @@ class ReadService:
             "taxon_id": row.get("taxon_id"),
             "reference_url": row.get("reference_url"),
             "contigs": contigs if isinstance(contigs, list) else [],
+            "assets": row.get("assets", []) if isinstance(row.get("assets", []), list) else [],
             "source_count": len(tracks),
             "endpoint_count": int(row.get("endpoint_count", 0)),
             "source_tracks": tracks,
@@ -301,6 +304,59 @@ class ReadService:
                 "assembly_accession": accession,
             },
         }
+        if accession and any(
+            isinstance(track, Mapping)
+            and track.get("release_status") == "published_standardized"
+            and bool(track.get("has_jbrowse", True))
+            for track in tracks
+        ) and any(
+            isinstance(asset, Mapping) and str(asset.get("asset_kind", "")) == "fasta"
+            for asset in result["assets"]
+        ) and any(
+            isinstance(asset, Mapping) and str(asset.get("asset_kind", "")) == "fai"
+            for asset in result["assets"]
+        ):
+            config_url = f"/api/v1/assemblies/{quote(str(accession), safe='')}/jbrowse-config"
+            result["links"] = {
+                "jbrowse_config": config_url,
+                "jbrowse": self.jbrowse_base + "?" + urlencode({"config": config_url, "assembly": str(accession)}),
+            }
+        return result
+
+    def jbrowse_config(
+        self,
+        release_version: str | None,
+        assembly_accession: str,
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, Any]:
+        release = self._release(release_version)
+        try:
+            getter = getattr(self.repository, "get_jbrowse_bundle", None)
+            if callable(getter):
+                bundle = getter(release, assembly_accession)
+            else:
+                assembly = self.repository.get_assembly(release, assembly_accession)
+                bundle = None if assembly is None else {"assembly": assembly, "sources": []}
+        except RepositoryNotFound as exc:
+            raise not_found("assembly_not_found", str(exc), field="assembly_accession", release_version=release.release_version) from exc
+        except RepositoryUnavailable as exc:
+            raise ApiError(503, "repository_unavailable", "query repository is unavailable", release_version=release.release_version) from exc
+        if not bundle:
+            raise not_found("assembly_not_found", f"assembly not found: {assembly_accession}", field="assembly_accession", release_version=release.release_version)
+        assembly = bundle.get("assembly") if isinstance(bundle, Mapping) else None
+        sources = bundle.get("sources", []) if isinstance(bundle, Mapping) else []
+        if not isinstance(assembly, Mapping) or not isinstance(sources, Sequence):
+            raise not_found("jbrowse_not_available", "assembly browser metadata is unavailable", field="assembly_accession", release_version=release.release_version)
+        try:
+            return build_jbrowse_config(
+                assembly,
+                [self._source_item(release, source) for source in sources if isinstance(source, Mapping)],
+                release,
+                default_source_id=source_id,
+            )
+        except BrowserConfigUnavailable as exc:
+            raise not_found("jbrowse_not_available", str(exc), field="assembly_accession", release_version=release.release_version) from exc
 
     def assembly_detail(self, release_version: str | None, assembly_accession: str) -> dict[str, Any]:
         release = self._release(release_version)

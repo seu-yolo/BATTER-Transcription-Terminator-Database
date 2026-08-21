@@ -1,7 +1,7 @@
 # BTED v0.3 API 契约
 
 **前缀：** `/api/v1`
-**状态：** v0.3.0 C2：只读 FastAPI 查询层与同源资产 GET/HEAD/单 Range 代理已实现；真实数据库部署仍未完成
+**状态：** v0.3.0 D2：只读 FastAPI 查询层、同源资产 GET/HEAD/单 Range 代理与 assembly 级动态 JBrowse 配置已实现；真实数据库部署仍未完成
 **默认数据：** 当前 `published` release；所有响应显式返回 `release_version`
 
 ## 1. 通用规则
@@ -424,8 +424,8 @@ manifest、source manifest、`source_table_or_file`/`original_row_reference` 和
 checksum。API 不能在运行时重新解释作者坐标、合并同坐标 endpoint 或从模型预测补齐
 缺失数据；任何科学数据变化都要先生成新 release 并重新导入。
 
-v0.3.0 C2 已实现不写库的 FastAPI 读层和登记资产的 GET/HEAD/单 Range 代理，但仍不实现
-Next.js、Hugging Face 上传、gene context 计算或训练集生成。本文件冻结路径、字段、边界、
+v0.3.0 D2 已实现不写库的 FastAPI 读层、登记资产的 GET/HEAD/单 Range 代理和 assembly
+级动态 JBrowse 配置，但仍不实现 Hugging Face 上传、gene context 计算或训练集生成。本文件冻结路径、字段、边界、
 错误和 Range 行为；当前实现不连接真实 PostgreSQL 或远端 smoke test，后续实现必须保持这些
 合约。
 
@@ -439,7 +439,14 @@ S1_002 规则，`PostgresReadRepository` 负责参数化 PostgreSQL 查询，`cr
 请求值不会拼接为 SQL。
 
 当前可用路由为 health、stats、sources、assemblies、endpoints、genes、augmentation，
-`downloads/endpoints` 的流式 TSV/BED6 导出，以及 `GET|HEAD /api/v1/assets/{asset_id}`。
+`downloads/endpoints` 的流式 TSV/BED6 导出，`GET|HEAD /api/v1/assets/{asset_id}`，以及
+`GET /api/v1/assemblies/{assembly_id}/jbrowse-config`。最后一个接口从同一 release 的
+assembly/source/assets 查询结果按请求生成 JBrowse JSON：FASTA+FAI 是必要参考资产；
+GFF3+TBI 存在时生成共享基因注释轨道；每个 published source 的 BED 保持独立 endpoint
+track。已登记 BigWig 才生成 observed-signal track；双链 BigWig 以
+`MultiQuantitativeTrack` 紧凑展示，保留正值原始数值并标明 `normalization=none`、
+`display_transform=none`。轨道 metadata 包含 PMID/DOI、raw accession URL 和
+release/source provenance；S1_002 不进入配置。
 endpoint 响应保留 v0.2 的全部 24 列；
 BED6 的 `score` 暂固定为 `0`，原始 `signal_or_score` 只在 TSV/JSON 中保留，不把显示字段
 冒充实验信号。`include_annotations=true` 在 C1 明确返回 422，待许可和附表导出边界
@@ -452,8 +459,8 @@ header；单个 `bytes=start-end`、`start-` 或 `-suffix` 通过上游 Range �
 PMID/DOI，并返回 source-annotation 行数/证据类别摘要；完整 publication 信息从 source
 detail 获取。如果 fake repository 未提供该摘要，响应会明确标为 `not_loaded_in_c1`，而
 不是伪造附表内容。published source 的 JBrowse 链接现在通过同源
-`/api/v1/assets/{config_asset_id}` 作为 URL-encoded `config` 参数生成；audit-only source
-仍无 endpoint/JBrowse 入口。
+`/api/v1/assemblies/{assembly_id}/jbrowse-config?source_id={source_id}` 作为 URL-encoded
+`config` 参数生成；audit-only source 仍无 endpoint/JBrowse 入口。
 
 FastAPI、uvicorn、httpx 和 psycopg3 是可选运行依赖，统一列在根目录
 `requirements-v03.txt`；本仓库的离线测试不安装依赖，也不连接真实数据库。当前测试覆盖

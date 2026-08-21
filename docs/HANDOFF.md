@@ -380,3 +380,23 @@ test。下一步如要上线，应在隔离环境安装依赖，验证真实
 `pnpm run build`（PASS：编译、类型检查和静态页面生成均成功）；没有执行真实浏览器
 smoke test、API/数据库或部署 smoke test。下一步将 `BTED_API_ORIGIN` 指向 C1/C2 API 后做
 浏览器验收，再决定 Pages 或带服务端运行时的部署方式；不要把 API 凭据写入仓库。
+
+## D2 动态 JBrowse 接手说明（2026-08-22）
+
+新增 `backend/app/browser.py` 和 `GET /api/v1/assemblies/{assembly_id}/jbrowse-config`。
+`PostgresReadRepository.get_jbrowse_bundle()` 读取同一 release 的 assembly 公共资产以及
+各 published source 的公共资产；builder 只引用 `/api/v1/assets/{asset_id}`。FASTA+FAI
+缺一不可；GFF3+TBI 存在时才添加 gene track；BED 按 source 独立为 endpoint track。
+
+track metadata 已带 publication URL、raw accession URL、evidence、record count 和
+provenance。BigWig 不存在时不生成 coverage；+/- 两个 BigWig 使用一个
+`MultiQuantitativeTrack`，保持 raw 正值、无 normalization/log transform，并用 metadata
+标明 strand。S1_002/audit-only 不进入配置。source JBrowse link 的 `source_id` 在 config
+endpoint query 内，再整体编码进 `config` 参数；assembly detail 有可用参考资产时返回动态
+JBrowse link，frontend 显示 `Open JBrowse`。
+
+验证：D2 browser/API/asset 专项在默认环境通过；主代理在隔离 venv 安装
+`requirements-v03.txt` 后完成 FastAPI runtime 验收，API/assets 与全量
+`unittest discover` 均为 98/98 PASS（仅有 Starlette deprecation warning），Next build 也通过。
+未进行真实 PostgreSQL/远端资产/JBrowse 浏览器 smoke test。当前 v0.2 B1 canonical 资产仍不含参考/信号
+浏览器对象，后续需单独登记这些资产后才会在真实 assembly 上生成可打开配置。

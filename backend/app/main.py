@@ -168,6 +168,15 @@ def create_app(
     ) -> dict[str, Any]:
         return service.assembly_detail(release_version, assembly_id)
 
+    @app.get("/api/v1/assemblies/{assembly_id}/jbrowse-config")
+    def assembly_jbrowse_config(
+        assembly_id: str,
+        source_id: str | None = Query(default=None),
+        release_version: str | None = Query(default=None),
+        service: ReadService = Depends(get_service),
+    ) -> dict[str, Any]:
+        return service.jbrowse_config(release_version, assembly_id, source_id=source_id)
+
     @app.get("/api/v1/endpoints")
     def endpoints(
         release_version: str | None = Query(default=None),
