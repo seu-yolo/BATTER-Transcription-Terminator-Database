@@ -1,7 +1,7 @@
 # BTED v0.3 API 契约
 
 **前缀：** `/api/v1`
-**状态：** v0.3.0 第一里程碑，仅定义契约，不实现 FastAPI/Next.js
+**状态：** v0.3.0 C1：只读 FastAPI 查询层已实现；Next.js、资产 Range 代理和真实数据库部署仍未实现
 **默认数据：** 当前 `published` release；所有响应显式返回 `release_version`
 
 ## 1. 通用规则
@@ -392,10 +392,12 @@ allowlist/公开状态、登记的 `byte_size`、origin 返回的 `Content-Range
 #### `GET /api/v1/endpoints/{end_id}`
 
 返回一个 endpoint 的全部 24 列，不允许详情接口减少为坐标和分值。额外返回 source、
-sample、contig、publication、raw accession links、可用的 `source_annotations` 摘要和
-`provenance`（包括 source manifest、`source_table_or_file`、
+sample、contig、24 列中可得的 publication PMID/DOI、raw accession links、可用的
+`source_annotations` 摘要和 `provenance`（包括 source manifest、`source_table_or_file`、
 `original_row_reference`、release）。endpoint 的 JBrowse link 只能来自其 published
 source/registered asset；S1_002 没有 endpoint ID，因此请求该 ID 返回 `404`。
+完整的 publication title/journal/year 等信息通过 source detail 的 publication 关联查看，
+不在 endpoint 24 列接口中重复拼接。
 
 #### `GET /api/v1/genes/{gene_id}`
 
@@ -422,6 +424,33 @@ manifest、source manifest、`source_table_or_file`/`original_row_reference` 和
 checksum。API 不能在运行时重新解释作者坐标、合并同坐标 endpoint 或从模型预测补齐
 缺失数据；任何科学数据变化都要先生成新 release 并重新导入。
 
-v0.3.0 第一版不实现真实数据库、FastAPI、Next.js、Hugging Face 上传、gene context
-计算或训练集生成；本文件只冻结路径、字段、边界、错误和 Range 行为，后续实现必须
-保持这些合约。
+v0.3.0 C1 已实现不写库的 FastAPI 读层，但仍不实现资产 Range 代理、Next.js、Hugging
+Face 上传、gene context 计算或训练集生成。本文件冻结路径、字段、边界、错误和 Range
+行为；当前实现只覆盖其中的查询和 TSV/BED6 下载部分，后续实现必须保持这些合约。
+
+## 5. C1 只读实现说明
+
+实现位于 `backend/app/`：`ReadService` 独立承载 release、分页、排序、证据边界和
+S1_002 规则，`PostgresReadRepository` 负责参数化 PostgreSQL 查询，`create_app()` 提供
+可注入 repository 的 FastAPI app factory。默认 release 是数据库中
+`is_current = true AND status = 'published'` 的版本；显式传入未知 release 返回 404，
+不会回退到其它版本。每个 repository 操作独立打开并关闭连接；排序字段使用固定白名单，
+请求值不会拼接为 SQL。
+
+当前可用路由为 health、stats、sources、assemblies、endpoints、genes、augmentation，
+以及 `downloads/endpoints` 的流式 TSV/BED6 导出。endpoint 响应保留 v0.2 的全部 24 列；
+BED6 的 `score` 暂固定为 `0`，原始 `signal_or_score` 只在 TSV/JSON 中保留，不把显示字段
+冒充实验信号。`include_annotations=true` 在 C1 明确返回 422，待许可和附表导出边界
+单独实现。资产 `/api/v1/assets/{asset_id}`、Range 代理、Next.js 页面和 JBrowse 资产
+服务不在本阶段，不能把 manifest link 误解为已经可访问的资产接口。endpoint 详情保留 24
+列中的 PMID/DOI，并返回 source-annotation 行数/证据类别摘要；完整 publication 信息从
+source detail 获取。如果 fake repository 未提供该摘要，
+响应会明确标为 `not_loaded_in_c1`，而不是伪造附表内容。由于资产入口尚未实现，source
+详情中的已登记 JBrowse config 当前返回 `null` 和待实现说明，不生成死链接。
+
+FastAPI、uvicorn、httpx 和 psycopg3 是可选运行依赖，统一列在根目录
+`requirements-v03.txt`；本仓库的离线测试不安装依赖，也不连接真实数据库。当前测试覆盖
+纯 Python service/repository contract；若环境缺少 FastAPI，runtime smoke test 会被明确
+标记为 skipped，而不是报告为通过。安装依赖后可用 `backend.app.main.create_app()` 注入
+fake repository 做 HTTP contract smoke test，再配置显式 `BTED_DATABASE_URL` 执行隔离环境
+的只读查询。

@@ -154,3 +154,26 @@ release，但不能 promotion。`promote-postgres` 还要求 bundle 与最新 co
 前，应在隔离 PostgreSQL 实例执行 `schema.sql` 并用测试凭据验证一次完整 load/重复 release
 拒绝/回滚/count audit。writer 只搬运 canonical release 的已确认数据，不新增生物学解释，
 也不把预测或混合证据提升为实验 endpoint。
+
+## C1 只读查询层（已实现，仍不写库）
+
+`backend/app/` 提供一个不修改数据库的查询层：`ReadService` 负责 release 选择、公开证据
+边界、分页和响应结构，`PostgresReadRepository` 只执行参数化的 SELECT。每次 repository
+操作独立创建并关闭连接；排序字段来自固定白名单，查询参数不能成为 SQL 片段。
+`backend/app/main.py:create_app()` 是 FastAPI app factory，可以注入 fake repository 做离线
+契约测试，也可以在安装 `requirements-v03.txt` 后从 `BTED_DATABASE_URL` 创建生产 repository。
+
+C1 已覆盖 health、stats、sources、assemblies、endpoints、genes、来源级 augmentation，
+以及 endpoint 的流式 TSV/BED6 下载。默认查询 current published release，显式未知版本返回
+404。endpoint JSON/TSV 保留 v0.2 全部 24 列；BED6 使用
+`start = biological_coordinate_1based - 1`、`end = biological_coordinate_1based`，其
+`score` 暂写 `0` 作为 BED6 格式占位，原始 `signal_or_score` 不丢失且不被称为 coverage。
+S1_002 继续只返回 source 审计信息，不提供 endpoint、下载或 JBrowse 入口。endpoint 详情
+会从 `source_annotations` 返回行数和 annotation kind 摘要；fake repository 没有该摘要时
+使用带状态的未实现说明，不填充虚构字段。
+
+本阶段不实现真实数据库 smoke test、写入、`/api/v1/assets` Range 代理、Next.js 页面或
+JBrowse 资产服务。`include_annotations=true` 当前明确返回 422，避免在附表许可和导出
+格式尚未单独审定前把来源特异字段误当作核心 endpoint。FastAPI/uvicorn/httpx/psycopg3
+没有在本环境自动安装；缺少 FastAPI 时 runtime test 会跳过，离线测试通过不等于 HTTP 或
+PostgreSQL 已部署成功。

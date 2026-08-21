@@ -772,3 +772,58 @@ PostgreSQL 资源。
   rollback 和 count audit。
 - 未修改 v0.2 canonical release、网站或参考 FASTA/FAI；没有下载或发布远程资产。当前
   127 个 asset 仍是计划 origin，不能 promotion。
+
+## 2026-08-22 —— v0.3 第三阶段 C1：只读 FastAPI 查询层
+
+**分支：** `feature/bted-v0.3-dynamic-service`
+**状态：** 已实现，待主代理审查；未提交、未推送、未连接真实 PostgreSQL
+
+### 完成内容
+
+1. 新增 `backend/app/`：`ReadService` 独立实现 release 选择、分页、固定排序白名单、
+   公开证据过滤、1-based/BED6 规则和 S1_002 audit-only 边界；`PostgresReadRepository`
+   只执行参数化 SELECT，并为每次操作创建/关闭连接；`main.py:create_app()` 支持注入 fake
+   repository，避免测试依赖数据库或 FastAPI。
+2. 提供 `/api/v1/health`、`stats`、`sources`（列表/详情）、`assemblies`（列表/详情）、
+   `endpoints`（列表/详情）、`genes`（列表/详情）、来源级 `augmentation` 和流式
+   `downloads/endpoints` TSV/BED6。响应带 `release` 摘要和 provenance；endpoint JSON/TSV
+   保留 v0.2 全部 24 列，BED6 用 `position - 1`/`position` 转换。
+3. source 结果提供完整 publication、raw accession、source track 和已登记下载入口；endpoint
+   详情只从现有 24 列提供 PMID/DOI，并链接回 source detail 查看完整 publication。只有
+   published source 才生成 endpoint 下载入口，S1_002 不生成空 endpoint/JBrowse 链接。JBrowse
+   config 在 assets API 尚未实现时显示 null/pending note，避免死链接。
+   `include_annotations=true` 在 C1 明确返回 422，避免未经审定的附表导出边界。
+4. `requirements-v03.txt` 增加 FastAPI、uvicorn、httpx 的可选依赖；没有自动安装。更新
+   `docs/v0.3/api-contract.md`、`docs/v0.3/architecture.md` 与 `backend/database/README.md`，
+   明确 C1 已覆盖的路由和未实现的资产 Range/Next.js/真实 DB 边界。
+
+### 验证
+
+- `python3 -m unittest -q tests/test_bted_v03_api.py`：10 个测试通过，FastAPI runtime 测试
+  因环境未安装 FastAPI 明确 skipped。
+- `python3 -m unittest discover -s tests -p 'test*.py' -q`、
+  `python3 -m unittest -q tests/test_bted_ingestion.py`、`git diff --check` 应在主代理
+  收尾时再次执行；本阶段不把 skipped runtime 或 fake repository 结果表述为真实 HTTP/
+  PostgreSQL smoke test。
+
+### 未完成/边界
+
+- 未实现 `/api/v1/assets/{asset_id}`、HTTP Range/HEAD 代理、Next.js 页面、gene context、
+  annotation 下载或真实 PostgreSQL/psycopg smoke test；C1 不改变 canonical release 和
+  v0.2 网站。
+- BED6 的 score 是格式占位 `0`，原始 `signal_or_score` 仍在 TSV/JSON；不能把 BED6 score
+  解释为 coverage 或实验强度。
+
+### C1 主审修正
+
+- endpoint provenance 的 `release_version` 改为使用当前选定 `ReleaseContext`，不再误取
+  `manifest_sha256`；endpoint/list/download SQL 显式限制 `s.release_status =
+  'published_standardized'`。
+- endpoint/download 的 source 校验支持 `published_only`，因此 audit-only S1_002 会返回
+  404 而不是成功生成空文件。endpoint 详情保留 24 列中的 PMID/DOI，并增加
+  source-annotation 行数/annotation kind 摘要；完整 publication 信息从 source detail 获取，
+  附表未加载时返回明确状态。
+- C1 尚未提供 `/api/v1/assets`，所以 source 详情不会生成裸 config asset ID 的 JBrowse
+  死链接；已登记 config 显示 null/待 assets phase 说明。FastAPI runtime contract test
+  统一预期 `invalid_pagination`，并覆盖未知 release、非法 evidence、S1_002 下载和 24 列
+  endpoint 响应。

@@ -5,9 +5,10 @@
 **当前分支：** `feature/bted-v0.3-dynamic-service`
 
 **当前里程碑：** v0.3.0 已完成架构契约、PostgreSQL schema 骨架、只读 canonical
-release 校验/导入计划、B1 确定性 JSONL 物化，以及基于既有 v0.2 JBrowse bundle 的 47 个
-参考 contig 长度/provenance 注册；B2 writer 已实现并通过离线 fake connection 测试，但
-没有连接真实 PostgreSQL，也没有实现前端/API/部署。
+release 校验/导入计划、B1 确定性 JSONL 物化、B2 离线事务 writer，以及基于既有 v0.2
+JBrowse bundle 的 47 个参考 contig 长度/provenance 注册；C1 只读 FastAPI 查询层已实现并
+通过纯 Python contract tests，但没有连接真实 PostgreSQL，也没有实现 assets/Range、前端
+或部署。
 
 ## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
 
@@ -311,3 +312,41 @@ git diff --check
 `backend/database/schema.sql`，用测试凭据验证完整 load、重复 release 拒绝、已有自然键
 兼容/冲突、事务回滚、global/per-source count audit；在远程资产完成 HTTP 206 审计前不应
 标记 verified 或发布当前 release。不要提交 `/tmp` bundle、FASTA/FAI、数据库 URL 或凭据。
+
+## C1 只读 API 接手说明（2026-08-22）
+
+新增文件：
+
+- `backend/app/contracts.py`：无框架的 release/page/repository contracts；
+- `backend/app/errors.py`：统一 404/422 API error；
+- `backend/app/repository.py`：参数化 PostgreSQL read repository，每个操作独立清理连接；
+- `backend/app/service.py`：release、分页、排序、证据边界、下载和 audit-only 规则；
+- `backend/app/main.py`：可注入 fake repository 的 FastAPI `create_app()`；
+- `tests/test_bted_v03_api.py`：service/repository 离线测试和可选 HTTP contract tests。
+
+当前路由为 `/api/v1/health`、`stats`、`sources`、`assemblies`、`endpoints`、`genes`、
+`augmentation`、`downloads/endpoints`。列表/详情返回 release provenance；endpoint 保留
+24 列；TSV 是原值下载，BED6 的 score 是 `0` 格式占位，不能解释为 coverage。endpoint
+SQL 和 download source 校验只接受 `published_standardized`，S1_002 会 404，不生成空下载。
+endpoint 详情保留 24 列中的 PMID/DOI，并提供 source-annotation 行数/kind 摘要；完整
+publication 信息从 source detail 获取，没有摘要的 fake 结果会明确标记 `not_loaded_in_c1`。
+
+C1 暂不实现 `/api/v1/assets/{asset_id}`、HEAD/Range、Next.js/JBrowse 资产服务、附表下载、
+真实 PostgreSQL smoke test 或部署。由于 asset route 尚未存在，source 详情中已登记 JBrowse
+config 返回 null 与 pending note，不产生裸 asset ID 死链接；下一阶段实现同源 asset route
+后再恢复可点击 JBrowse URL。FastAPI/uvicorn/httpx/psycopg3 仅在
+`requirements-v03.txt` 声明，当前环境未安装。
+
+验证命令：
+
+```bash
+python3 -m unittest -q tests/test_bted_v03_api.py
+python3 -m unittest discover -s tests -p 'test*.py' -q
+python3 -m unittest -q tests/test_bted_ingestion.py
+git diff --check
+```
+
+缺少 FastAPI 时 API runtime tests 会 skipped；这是预期，不得写成 HTTP smoke test 已通过。
+安装依赖后再用 `TestClient(create_app(fake_repository))`，最后在隔离 PostgreSQL 中以显式
+`BTED_DATABASE_URL` 运行只读查询和 schema smoke test。不要在本任务安装依赖、连接生产库、
+修改 v0.2 canonical 数据或提交凭据。

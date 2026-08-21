@@ -1,6 +1,6 @@
 # BTED v0.3 架构契约
 
-**状态：** v0.3.0 第一里程碑（架构契约 + 数据库骨架）
+**状态：** v0.3.0 C1（架构契约 + 数据库骨架 + 只读 FastAPI 查询层）
 **适用版本：** v0.2.0 与 v0.3.0 并行
 **范围：** 当前仓库已经审计的 BATTER S1 内部数据
 
@@ -129,9 +129,14 @@ canonical 小表及其 provenance，不包括重新下载的原始测序数据�
 - 资产 Range 代理只能服务登记且 checksum 可验证的对象，不能把 FastAPI 变成任意
   URL 代理。
 
-## 6. 本里程碑不做的事情
+## 6. C1 已做与未做
 
-第一里程碑只交付架构契约、数据库 DDL、静态 schema 测试和交接记录。它不包含
-Next.js 页面、Render/Neon/Hugging Face/Vercel 部署、真实 PostgreSQL 迁移、NCBI 新
-数据导入、gene context 计算、训练集生成或 JBrowse 配置重建。所有这些工作必须在
-契约评审和新的任务范围获批后进行。
+C1 在 `backend/app/` 实现了不写库的 FastAPI read layer：查询只读 PostgreSQL、按 release
+和公开证据边界分页返回 sources/assemblies/endpoints/genes/augmentation，并提供 endpoint
+TSV/BED6 导出；service/repository 可用 fake repository 离线测试。它不改变 canonical release
+或 v0.2 网站。
+
+C1 仍不包含 `/api/v1/assets/{asset_id}` 的 HEAD/Range 同源代理、Next.js 页面、
+Render/Neon/Hugging Face/Vercel 部署、真实 PostgreSQL smoke test、NCBI 新数据导入、gene
+context 计算、训练集生成或 JBrowse 配置重建。安装可选依赖且在隔离环境验证后，才可推进
+真实查询服务和资产代理；不能把离线 contract tests 写成部署完成。
