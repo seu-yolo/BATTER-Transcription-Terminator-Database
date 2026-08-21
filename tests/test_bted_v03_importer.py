@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,12 +13,19 @@ import unittest
 from pathlib import Path
 
 from backend.importer.canonical import V02_ENDPOINT_COLUMNS, validate_release
+from scripts.build_reference_contig_registry import (
+    REFERENCE_CONTIG_COLUMNS,
+    RegistryBuildError,
+    build_reference_contig_registry,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RELEASE_ROOT = REPO_ROOT / "data/public/v0.2.0"
 REGISTRY = REPO_ROOT / "data/registry/batter_s1_source_registry.tsv"
 REGISTRY_MANIFESTS = REPO_ROOT / "data/registry/manifests"
+REFERENCE_CONTIG_REGISTRY = REPO_ROOT / "data/registry/reference_contigs.v0.2.0.tsv"
+JBROWSE_BUNDLE = REPO_ROOT.parent / "bted-v0.2/dist/BTED-v0.2.0-jbrowse"
 
 
 def digest(path: Path) -> str:
@@ -34,6 +42,63 @@ def write_tsv(path: Path, fields: list[str], rows: list[dict[str, str]]) -> None
         writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def copy_reference_contig_registry(destination: Path) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REFERENCE_CONTIG_REGISTRY, destination)
+    return destination
+
+
+def make_tiny_jbrowse_bundle(
+    root: Path,
+    release_root: Path,
+    source_ids: tuple[str, ...] = ("BATTER_S1_007",),
+    lengths: tuple[int, ...] = (100_000,),
+    mutate_after_checksum: bool = False,
+) -> Path:
+    """Create only tiny fake FNA/FAI/config assets for builder tests."""
+
+    bundle = root / "tiny-jbrowse"
+    assets = bundle / "assets"
+    assets.mkdir(parents=True)
+    checksum_paths: list[Path] = []
+    for source_id, length in zip(source_ids, lengths):
+        endpoint_path = release_root / "records" / source_id / "endpoints.tsv"
+        with endpoint_path.open(encoding="utf-8", newline="") as handle:
+            endpoint = next(csv.DictReader(handle, delimiter="\t"))
+        contig = endpoint["reference_name"]
+        fasta_name = f"{source_id}__fake.fna"
+        fai_name = f"{source_id}__fake.fna.fai"
+        fasta_path = assets / fasta_name
+        fai_path = assets / fai_name
+        fasta_path.write_text(f">{contig}\nACGT\n", encoding="utf-8")
+        fai_path.write_text(f"{contig}\t{length}\t0\t4\t5\n", encoding="utf-8")
+        config = {
+            "assemblies": [
+                {
+                    "name": f"{source_id}_assembly",
+                    "sequence": {
+                        "adapter": {
+                            "type": "IndexedFastaAdapter",
+                            "fastaLocation": {"uri": f"assets/{fasta_name}"},
+                            "faiLocation": {"uri": f"assets/{fai_name}"},
+                        }
+                    },
+                }
+            ]
+        }
+        config_path = bundle / f"{source_id}.config.json"
+        config_path.write_text(json.dumps(config) + "\n", encoding="utf-8")
+        checksum_paths.extend([config_path, fasta_path, fai_path])
+    sums = []
+    for path in sorted(checksum_paths, key=lambda item: item.relative_to(bundle).as_posix()):
+        sums.append(f"{digest(path)}  {path.relative_to(bundle).as_posix()}\n")
+    (bundle / "SHA256SUMS.txt").write_text("".join(sums), encoding="utf-8")
+    if mutate_after_checksum:
+        first_fasta = assets / f"{source_ids[0]}__fake.fna"
+        first_fasta.write_text(first_fasta.read_text(encoding="utf-8") + "A\n", encoding="utf-8")
+    return bundle
 
 
 def _source_row(source_id: str) -> dict[str, str]:
@@ -334,7 +399,15 @@ class TestBtedV03Importer(unittest.TestCase):
         self.assertEqual(first.summary["source_annotation_record_count"], 24_887)
         self.assertEqual(first.plan["write_mode"], "not_written")
         self.assertEqual(first.plan["canonical_validation_status"], "validated")
-        self.assertFalse(first.plan["postgresql_ready"])
+        self.assertTrue(first.plan["postgresql_ready"])
+        self.assertEqual(first.plan["unresolved"], [])
+        self.assertEqual(len(first.plan["tables"]["contigs"]["rows"]), 47)
+        self.assertTrue(
+            all(
+                row["length_bp"] > row["max_endpoint_position_1based"] > 0
+                for row in first.plan["tables"]["contigs"]["rows"]
+            )
+        )
         self.assertEqual(first.plan["tables"]["import_runs"]["row_count"], 1)
         self.assertEqual(first.plan["tables"]["assets"]["row_count"], 127)
         self.assertTrue(
@@ -379,7 +452,174 @@ class TestBtedV03Importer(unittest.TestCase):
         )
         self.assertEqual(first.plan["tables"]["genes"]["row_count"], 0)
         self.assertEqual(first.plan["tables"]["endpoint_gene_context"]["row_count"], 0)
-        self.assertTrue(first.summary["unresolved"])
+        self.assertFalse(first.summary["unresolved"])
+
+    def test_missing_reference_contig_registry_keeps_canonical_valid_but_not_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = validate_release(make_fixture(root), repo_root=root)
+            self.assertTrue(report.ok)
+            self.assertEqual(report.plan["canonical_validation_status"], "validated")
+            self.assertFalse(report.plan["postgresql_ready"])
+            self.assertTrue(any("reference contig registry missing" in item for item in report.plan["unresolved"]))
+            self.assertIsNone(report.plan["tables"]["contigs"]["rows"][0]["length_bp"])
+
+    def test_reference_contig_registry_length_equal_endpoint_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry_path = copy_reference_contig_registry(root / "reference_contigs.tsv")
+            with registry_path.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle, delimiter="\t"))
+            target = next(row for row in rows if row["assembly_accession"] == "GCF_000005845.1")
+            target["length_bp"] = str(int(target["max_endpoint_position_1based"]))
+            write_tsv(registry_path, REFERENCE_CONTIG_COLUMNS, rows)
+            report = validate_release(RELEASE_ROOT, contig_registry=registry_path)
+            self.assertTrue(report.ok, [issue.as_dict() for issue in report.issues[:3]])
+            self.assertTrue(report.plan["postgresql_ready"])
+
+    def test_reference_contig_registry_length_below_endpoint_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry_path = copy_reference_contig_registry(root / "reference_contigs.tsv")
+            with registry_path.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle, delimiter="\t"))
+            target = next(row for row in rows if row["assembly_accession"] == "GCF_000005845.1")
+            target["length_bp"] = str(int(target["max_endpoint_position_1based"]) - 1)
+            write_tsv(registry_path, REFERENCE_CONTIG_COLUMNS, rows)
+            report = validate_release(RELEASE_ROOT, contig_registry=registry_path)
+            self.assertFalse(report.ok)
+            self.assertTrue(
+                any("length_bp" in issue.message and "endpoint" in issue.message for issue in report.issues)
+            )
+
+    def test_reference_contig_registry_requires_exact_endpoint_contig_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            missing_path = copy_reference_contig_registry(root / "missing.tsv")
+            with missing_path.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle, delimiter="\t"))
+            rows = [row for row in rows if not (row["assembly_accession"] == "GCF_000005845.1" and row["contig_accession"] == "NC_000913.2")]
+            write_tsv(missing_path, REFERENCE_CONTIG_COLUMNS, rows)
+            missing_report = validate_release(RELEASE_ROOT, contig_registry=missing_path)
+            self.assertFalse(missing_report.ok)
+            self.assertTrue(any("missing endpoint contig" in issue.message for issue in missing_report.issues))
+
+            extra_path = copy_reference_contig_registry(root / "extra.tsv")
+            with extra_path.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle, delimiter="\t"))
+            extra = dict(rows[0])
+            extra.update(
+                {
+                    "assembly_accession": "GCF_999999999.1",
+                    "contig_accession": "NC_FAKE.1",
+                    "length_bp": "2",
+                    "max_endpoint_position_1based": "1",
+                }
+            )
+            rows.append(extra)
+            write_tsv(extra_path, REFERENCE_CONTIG_COLUMNS, rows)
+            extra_report = validate_release(RELEASE_ROOT, contig_registry=extra_path)
+            self.assertFalse(extra_report.ok)
+            self.assertTrue(any("extra contig" in issue.message for issue in extra_report.issues))
+
+    @unittest.skipUnless(JBROWSE_BUNDLE.is_dir(), "local v0.2 JBrowse bundle is not checked out")
+    def test_reference_contig_builder_real_bundle_has_47_rows(self) -> None:
+        provenance = build_reference_contig_registry(
+            RELEASE_ROOT,
+            JBROWSE_BUNDLE,
+            generated_at_utc="2026-08-21T00:00:00Z",
+        )
+        self.assertEqual(provenance["source_count"], 21)
+        self.assertEqual(provenance["contig_count"], 47)
+        self.assertEqual(len(provenance["rows"]), 47)
+        self.assertIn("BATTER_S1_007;BATTER_S1_013", {
+            row["supporting_source_ids"] for row in provenance["rows"]
+        })
+
+    def test_reference_contig_builder_tiny_bundle_and_checksum_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            bundle = make_tiny_jbrowse_bundle(root, release_root)
+            provenance = build_reference_contig_registry(
+                release_root,
+                bundle,
+                generated_at_utc="2026-08-21T00:00:00Z",
+            )
+            self.assertEqual(provenance["contig_count"], 1)
+            self.assertEqual(provenance["rows"][0]["length_bp"], "100000")
+
+            short_bundle = make_tiny_jbrowse_bundle(
+                root / "short",
+                release_root,
+                lengths=(1,),
+            )
+            with self.assertRaisesRegex(RegistryBuildError, "shorter than the maximum endpoint"):
+                build_reference_contig_registry(release_root, short_bundle)
+
+            bad_bundle = make_tiny_jbrowse_bundle(root / "bad", release_root, mutate_after_checksum=True)
+            with self.assertRaises(RegistryBuildError):
+                build_reference_contig_registry(release_root, bad_bundle)
+
+    def test_reference_contig_builder_rejects_invalid_generated_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            bundle = make_tiny_jbrowse_bundle(root, release_root)
+            for timestamp in (
+                "2026-08-21T00:00:00",
+                "2026-08-21T00:00:00+08:00",
+                "not-a-timestamp",
+            ):
+                with self.subTest(timestamp=timestamp):
+                    with self.assertRaisesRegex(RegistryBuildError, "generated_at_utc"):
+                        build_reference_contig_registry(
+                            release_root,
+                            bundle,
+                            generated_at_utc=timestamp,
+                        )
+
+    def test_reference_contig_builder_cli_accepts_fixed_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_fixture(root)
+            bundle = make_tiny_jbrowse_bundle(root, release_root)
+            output_tsv = root / "out/reference_contigs.tsv"
+            output_json = root / "out/reference_contigs.json"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts/build_reference_contig_registry.py"),
+                    "--release-root",
+                    str(release_root),
+                    "--jbrowse-bundle",
+                    str(bundle),
+                    "--output-tsv",
+                    str(output_tsv),
+                    "--output-json",
+                    str(output_json),
+                    "--generated-at-utc",
+                    "2026-08-21T00:00:00Z",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(json.loads(output_json.read_text(encoding="utf-8"))["generated_at_utc"], "2026-08-21T00:00:00Z")
+
+    def test_reference_contig_builder_rejects_shared_contig_conflict(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_root = make_same_pmid_conflict_fixture(root)
+            bundle = make_tiny_jbrowse_bundle(
+                root,
+                release_root,
+                source_ids=("BATTER_S1_007", "BATTER_S1_013"),
+                lengths=(100_000, 99_999),
+            )
+            with self.assertRaisesRegex(RegistryBuildError, "shared contig conflict"):
+                build_reference_contig_registry(release_root, bundle)
 
     def test_coordinate_error_has_source_file_and_line(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -30,6 +30,15 @@ python3 scripts/import_bted_v03.py validate \
   --plan-json /tmp/bted-v03-import-plan.json
 ```
 
+默认会读取仓库内的
+`data/registry/reference_contigs.v0.2.0.tsv`。如需审计一个副本，可以显式指定：
+
+```bash
+python3 scripts/import_bted_v03.py validate \
+  --release-root data/public/v0.2.0 \
+  --contig-registry /path/to/reference_contigs.tsv
+```
+
 测试 fixture 或复制出的 release 可以用 `--repo-root` 指定 registry 和来源 manifest
 所在的仓库根目录：
 
@@ -61,6 +70,27 @@ python3 scripts/import_bted_v03.py validate \
    与实际文件和 release entry 中的 SHA-256 相同；除 checksum 文件自身外，所有声明的
    发布文件都必须出现在该清单中；
 5. 已发布 source 的 24 列 `endpoints.tsv` 与 `endpoints.bed`。
+6. `data/registry/reference_contigs.v0.2.0.tsv`（或 `--contig-registry` 指定的副本）。
+   该小表由 `scripts/build_reference_contig_registry.py` 从既有的 v0.2 JBrowse release
+   bundle 生成，不下载新参考序列，也不从端点最大坐标猜长度。生成器要求每个 published
+   source 的 config 使用带来源前缀的 `IndexedFastaAdapter`，FAI 中精确存在 endpoint
+   contig，并且 FASTA/FAI/config 的摘要与 bundle 根 `SHA256SUMS.txt` 一致。
+
+参考 contig 注册表会进一步检查：它与 canonical endpoint 的 `(assembly, contig)` 集合
+恰好相同；`length_bp` 大于或等于该 contig 的最大 1-based endpoint 坐标（endpoint 可以
+正好位于 contig 的最后一个碱基）；共享 contig 的
+supporting source、FASTA/FAI 摘要、生成器和 UTC 时间等 provenance 字段有效。FASTA/FAI
+文件仍不进入 Git，也不会被 canonical `assets` 计划复制；注册表只保存可复核的来源和
+checksum。
+
+需要可重复生成同一 provenance 时间时，可以固定生成时间：
+
+```bash
+python3 scripts/build_reference_contig_registry.py \
+  --release-root data/public/v0.2.0 \
+  --jbrowse-bundle /path/to/BTED-v0.2.0-jbrowse \
+  --generated-at-utc 2026-08-21T00:00:00Z
+```
 
 每个 endpoint 行检查：
 
@@ -99,9 +129,10 @@ manifest 必须保持 DOI、标题和年份一致；相同带版本 assembly 也
 | source accession | 32 |
 | source annotation 文件 / 行 | 17 / 24,887 |
 
-endpoint 表中没有 contig 长度，因此 plan 会把 `length_bp` 标为 unresolved；校验器不从
-坐标最大值猜测长度。未来正式导入前，应从每个引用的参考 FASTA/assembly metadata 核实
-长度并保存来源和 checksum。
+参考 contig 注册表已由现有 v0.2 JBrowse bundle 的 21 套 source config、FAI 和根
+`SHA256SUMS.txt` 生成，覆盖全部 47 个 endpoint contig；因此当前真实 v0.2.0 plan 已
+包含 `length_bp` 和对应 provenance，且 `postgresql_ready=true`。这不是一次新的参考
+序列下载：注册表只是把既有发布资产的可复核长度和 checksum 提升为查询层元数据。
 
 ## import plan 的含义
 
@@ -128,9 +159,10 @@ endpoint/annotation 键集合以数量、首尾样本和集合 SHA-256 表示，
 `SR* / PRJNA → SRA`、`PRJEB → ENA`、`E-MTAB → BioStudies`（另记录 `ArrayExpress`
 别名放在 plan metadata 中，不作为物理列）。未知前缀只进入 `unresolved`，不会猜测数据库。
 
-当前真实 v0.2.0 的 `canonical_validation_status=validated`，但
-`postgresql_ready=false`：47 个 contig 的 `length_bp` 尚未从参考 FASTA/assembly metadata
-核实，不能把校验通过误认为已经满足 PostgreSQL 的 NOT NULL 约束。
+当前真实 v0.2.0 的 `canonical_validation_status=validated`，且
+`postgresql_ready=true`：47 个 contig 的 `length_bp` 均由既有 JBrowse FAI 核实并通过
+checksum/provenance 检查。`postgresql_ready` 仍只表示满足写库前预检，不表示已经执行
+PostgreSQL INSERT。
 
 未来的 PostgreSQL importer 必须把该 plan 作为 staging 预检，然后按
 `release -> publication/assembly -> source/accession/sample -> endpoint/annotation ->
@@ -146,8 +178,10 @@ python3 -m unittest discover -s tests -p 'test*.py' -v
 git diff --check
 ```
 
-测试包含真实 v0.2.0 happy path，以及只复制少量文件到临时目录后模拟的坐标错误、
+测试包含真实 v0.2.0 happy path（47 个 contig/ready）、既有 JBrowse bundle 的真实 registry
+构建，以及只复制少量文件到临时目录后模拟的坐标错误、
 annotation orphan、audit-only 错误 endpoint、release row-count mismatch、canonical
 manifest 篡改、必要文件缺失/未声明、SHA256SUMS 不一致、registry extra source、相同
 PMID 元数据冲突、未声明 checksum 条目、错误 release version 和 CLI plan 输出；不会复制
-整个大型 release，也不会修改仓库内的原始数据。
+整个大型 release，也不会修改仓库内的原始数据。builder 测试还覆盖 tiny FAI、共享
+contig 长度冲突、缺失/额外 contig 和 bundle checksum 失败。

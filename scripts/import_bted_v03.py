@@ -46,6 +46,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="write the deterministic import plan to this path",
     )
+    validate.add_argument(
+        "--contig-registry",
+        default=None,
+        help=(
+            "reference contig provenance TSV; defaults to "
+            "data/registry/reference_contigs.v0.2.0.tsv under --repo-root"
+        ),
+    )
     return parser
 
 
@@ -53,7 +61,11 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command != "validate":
         return 2
-    report = validate_release(args.release_root, repo_root=args.repo_root)
+    report = validate_release(
+        args.release_root,
+        repo_root=args.repo_root,
+        contig_registry=args.contig_registry,
+    )
     if args.plan_json:
         plan_path = Path(args.plan_json).expanduser()
         plan_path.parent.mkdir(parents=True, exist_ok=True)

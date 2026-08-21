@@ -17,6 +17,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -60,6 +61,26 @@ RELEASE_VERSION_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
 # sequencing/alignment files must be represented by an external accession or a
 # future separately governed asset, not silently added to this import plan.
 MAX_CANONICAL_ASSET_BYTES = 50 * 1024 * 1024
+
+# This small tracked table is generated from the existing v0.2 JBrowse release
+# bundle.  It is provenance for the query/import plan only; the FASTA/FAI files
+# themselves remain outside Git and are never loaded by this validator.
+REFERENCE_CONTIG_COLUMNS = [
+    "release_version",
+    "assembly_accession",
+    "contig_accession",
+    "length_bp",
+    "max_endpoint_position_1based",
+    "supporting_source_ids",
+    "fasta_asset_basename",
+    "fasta_sha256",
+    "fai_asset_basename",
+    "fai_sha256",
+    "bundle_sha256sums_sha256",
+    "generator_version",
+    "generated_at_utc",
+]
+DEFAULT_CONTIG_REGISTRY = "data/registry/reference_contigs.v0.2.0.tsv"
 
 
 def sha256_file(path: Path) -> str:
@@ -121,7 +142,12 @@ class ValidationReport:
 class CanonicalReleaseValidator:
     """Validate one canonical release and build its deterministic import plan."""
 
-    def __init__(self, release_root: str | Path, repo_root: str | Path | None = None):
+    def __init__(
+        self,
+        release_root: str | Path,
+        repo_root: str | Path | None = None,
+        contig_registry: str | Path | None = None,
+    ):
         self.release_root = Path(release_root).expanduser().resolve()
         if repo_root is None:
             # ``data/public/<release>`` is the standard layout.  For a custom
@@ -129,6 +155,13 @@ class CanonicalReleaseValidator:
             self.repo_root = self.release_root.parents[2]
         else:
             self.repo_root = Path(repo_root).expanduser().resolve()
+        if contig_registry is None:
+            self.contig_registry_path = self.repo_root / DEFAULT_CONTIG_REGISTRY
+        else:
+            candidate = Path(contig_registry).expanduser()
+            self.contig_registry_path = (
+                candidate if candidate.is_absolute() else self.repo_root / candidate
+            ).resolve()
         self.issues: list[ValidationIssue] = []
         self.checksums: dict[str, str] = {}
         self._registry_by_source: dict[str, dict[str, str]] = {}
@@ -140,6 +173,11 @@ class CanonicalReleaseValidator:
         self._source_annotations: dict[str, int] = {}
         self._annotation_end_ids: dict[str, set[str]] = {}
         self._contigs: set[tuple[str, str]] = set()
+        self._contig_max_positions: dict[tuple[str, str], int] = {}
+        self._contig_source_ids: dict[tuple[str, str], set[str]] = {}
+        self._contig_registry: dict[tuple[str, str], dict[str, str]] = {}
+        self._contig_registry_loaded = False
+        self._contig_registry_ok = False
         self._samples: set[tuple[str, str]] = set()
         self._verified_assets: list[dict[str, Any]] = []
         self._declared_files: dict[str, dict[str, Path]] = {}
@@ -738,7 +776,13 @@ class CanonicalReleaseValidator:
             contig = row.get("reference_name", "")
             if not assembly or assembly == "NA" or not contig or contig == "NA":
                 self._issue("reference_assembly/reference_name 缺失", source_id, endpoint_path, number)
-            self._contigs.add((assembly, contig))
+            contig_key = (assembly, contig)
+            self._contigs.add(contig_key)
+            self._contig_source_ids.setdefault(contig_key, set()).add(source_id)
+            if position >= 1:
+                self._contig_max_positions[contig_key] = max(
+                    self._contig_max_positions.get(contig_key, 0), position
+                )
             self._samples.add((source_id, sample_id))
             expected_pmid = registry.get("pmid", "")
             expected_doi = registry.get("doi", "")
@@ -918,6 +962,229 @@ class CanonicalReleaseValidator:
             self._unresolved.append(message)
         return None, None
 
+    def _load_contig_registry(self) -> None:
+        """Load and validate the small reference-contig provenance table.
+
+        The table is generated from the already published v0.2 JBrowse bundle
+        by ``scripts/build_reference_contig_registry.py``.  It is intentionally
+        not a substitute for the FASTA/FAI files: the builder has verified
+        those files and records their checksums here.  Missing provenance keeps
+        the canonical release valid but prevents a future PostgreSQL import.
+        """
+
+        path = self.contig_registry_path
+        if not path.is_file():
+            message = f"reference contig registry missing: {self._display(path)}"
+            if message not in self._unresolved:
+                self._unresolved.append(message)
+            return
+
+        self._contig_registry_loaded = True
+        self.checksums[self._display(path)] = sha256_file(path)
+        issue_start = len(self.issues)
+        fields, rows = self._read_tsv(path)
+        missing_fields = sorted(set(REFERENCE_CONTIG_COLUMNS) - set(fields))
+        extra_fields = sorted(set(fields) - set(REFERENCE_CONTIG_COLUMNS))
+        if fields != REFERENCE_CONTIG_COLUMNS:
+            details: list[str] = []
+            if missing_fields:
+                details.append(f"missing={','.join(missing_fields)}")
+            if extra_fields:
+                details.append(f"extra={','.join(extra_fields)}")
+            if not details:
+                details.append("column order differs")
+            self._issue(
+                f"reference contig registry header must match exact schema ({'; '.join(details)})",
+                path=path,
+                line=1,
+            )
+        if missing_fields:
+            self._unresolved.append(
+                f"reference contig registry cannot be parsed because required fields are missing: {','.join(missing_fields)}"
+            )
+            return
+
+        release_version = str(self._release.get("release_version", ""))
+        seen: set[tuple[str, str]] = set()
+        bundle_checksum_values: set[str] = set()
+        for number, row in enumerate(rows, start=2):
+            assembly = str(row.get("assembly_accession", "")).strip()
+            contig = str(row.get("contig_accession", "")).strip()
+            if not assembly or assembly == "NA" or not contig or contig == "NA":
+                self._issue("reference contig registry assembly/contig 缺失", path=path, line=number)
+                continue
+            key = (assembly, contig)
+            if key in seen:
+                self._issue(
+                    f"reference contig registry assembly/contig 重复: {assembly}/{contig}",
+                    path=path,
+                    line=number,
+                )
+                continue
+            seen.add(key)
+            valid = True
+            if str(row.get("release_version", "")) != release_version:
+                self._issue(
+                    f"reference contig registry release_version 与根 release 不一致: {row.get('release_version')!r} != {release_version!r}",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+            try:
+                length_bp = int(str(row.get("length_bp", "")))
+                max_position = int(str(row.get("max_endpoint_position_1based", "")))
+            except (TypeError, ValueError):
+                self._issue(
+                    "reference contig registry length/max endpoint 必须为整数",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+                length_bp = 0
+                max_position = 0
+            if length_bp <= 0:
+                self._issue("reference contig registry length_bp 必须为正数", path=path, line=number)
+                valid = False
+            if max_position <= 0:
+                self._issue(
+                    "reference contig registry max_endpoint_position_1based 必须为正数",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+            if length_bp > 0 and max_position > 0 and length_bp < max_position:
+                self._issue(
+                    f"reference contig length_bp 必须大于或等于 max endpoint position: {length_bp} < {max_position}",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+
+            actual_max = self._contig_max_positions.get(key)
+            if actual_max is None:
+                self._issue(
+                    f"reference contig registry contains extra assembly/contig: {assembly}/{contig}",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+            else:
+                if max_position != actual_max:
+                    self._issue(
+                        f"reference contig registry max endpoint 不匹配 canonical endpoints: {max_position} != {actual_max}",
+                        path=path,
+                        line=number,
+                    )
+                    valid = False
+                if length_bp < actual_max:
+                    self._issue(
+                        f"reference contig length_bp 不足以覆盖 canonical endpoint: {length_bp} < {actual_max}",
+                        path=path,
+                        line=number,
+                    )
+                    valid = False
+
+            support_values = [item.strip() for item in str(row.get("supporting_source_ids", "")).split(";") if item.strip()]
+            support_set = set(support_values)
+            expected_support = self._contig_source_ids.get(key, set())
+            if not support_values or any(not SOURCE_ID_RE.fullmatch(item) for item in support_values):
+                self._issue(
+                    "reference contig registry supporting_source_ids 格式错误",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+            if len(support_values) != len(support_set):
+                self._issue(
+                    "reference contig registry supporting_source_ids 不得重复",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+            if support_values != sorted(support_values):
+                self._issue(
+                    "reference contig registry supporting_source_ids 必须按 source_id 排序",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+            if support_set != expected_support:
+                self._issue(
+                    f"reference contig registry supporting_source_ids 与 endpoint 来源不一致: {sorted(support_set)} != {sorted(expected_support)}",
+                    path=path,
+                    line=number,
+                )
+                valid = False
+
+            for field_name in (
+                "fasta_asset_basename",
+                "fai_asset_basename",
+                "generator_version",
+                "generated_at_utc",
+            ):
+                value = str(row.get(field_name, "")).strip()
+                if not value or "/" in value or "\\" in value or value in {".", ".."}:
+                    self._issue(
+                        f"reference contig registry {field_name} 无效",
+                        path=path,
+                        line=number,
+                    )
+                    valid = False
+                if field_name == "generated_at_utc" and value:
+                    try:
+                        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    except ValueError:
+                        timestamp = None
+                    if timestamp is None or timestamp.tzinfo is None:
+                        self._issue(
+                            "reference contig registry generated_at_utc 必须为带时区的 ISO-8601 时间",
+                            path=path,
+                            line=number,
+                        )
+                        valid = False
+            for field_name in ("fasta_sha256", "fai_sha256", "bundle_sha256sums_sha256"):
+                value = str(row.get(field_name, "")).strip()
+                if not SHA256_RE.fullmatch(value):
+                    self._issue(
+                        f"reference contig registry {field_name} 必须为 64 位小写 SHA-256",
+                        path=path,
+                        line=number,
+                    )
+                    valid = False
+                if field_name == "bundle_sha256sums_sha256" and SHA256_RE.fullmatch(value):
+                    bundle_checksum_values.add(value)
+            if valid:
+                self._contig_registry[key] = row
+
+        expected_keys = set(self._contigs)
+        actual_keys = set(seen)
+        for assembly, contig in sorted(expected_keys - actual_keys):
+            self._issue(
+                f"reference contig registry missing endpoint contig: {assembly}/{contig}",
+                path=path,
+                line=1,
+            )
+        for assembly, contig in sorted(actual_keys - expected_keys):
+            self._issue(
+                f"reference contig registry extra contig: {assembly}/{contig}",
+                path=path,
+                line=1,
+            )
+
+        if len(bundle_checksum_values) > 1:
+            self._issue(
+                "reference contig registry rows reference more than one bundle SHA256SUMS checksum",
+                path=path,
+                line=1,
+            )
+
+        if len(self.issues) == issue_start and actual_keys == expected_keys:
+            self._contig_registry_ok = True
+        else:
+            message = f"reference contig registry validation failed: {self._display(path)}"
+            if message not in self._unresolved:
+                self._unresolved.append(message)
+
     def _build_plan(
         self,
         source_ids: list[str],
@@ -943,10 +1210,35 @@ class CanonicalReleaseValidator:
             )
         publications = [publication_by_pmid[pmid] for pmid in sorted(publication_by_pmid)]
         assemblies = sorted({row.get("reference_genome", "") for row in registry_rows if row.get("reference_genome")})
-        contigs = sorted(
-            [{"assembly": assembly, "contig": contig} for assembly, contig in self._contigs],
-            key=lambda x: (x["assembly"], x["contig"]),
-        )
+        contigs: list[dict[str, Any]] = []
+        for assembly, contig in sorted(self._contigs):
+            registry_row = self._contig_registry.get((assembly, contig), {})
+            item: dict[str, Any] = {
+                "assembly": assembly,
+                "contig": contig,
+                "length_bp": (
+                    int(registry_row["length_bp"])
+                    if registry_row.get("length_bp", "").isdigit()
+                    else None
+                ),
+            }
+            for field_name in (
+                "max_endpoint_position_1based",
+                "supporting_source_ids",
+                "fasta_asset_basename",
+                "fasta_sha256",
+                "fai_asset_basename",
+                "fai_sha256",
+                "bundle_sha256sums_sha256",
+                "generator_version",
+                "generated_at_utc",
+            ):
+                if field_name in registry_row:
+                    value = registry_row[field_name]
+                    if field_name == "max_endpoint_position_1based" and str(value).isdigit():
+                        value = int(value)
+                    item[field_name] = value
+            contigs.append(item)
         samples = sorted(
             [{"source_id": sid, "sample_id": sample} for sid, sample in self._samples],
             key=lambda x: (x["source_id"], x["sample_id"]),
@@ -972,11 +1264,19 @@ class CanonicalReleaseValidator:
                 accessions.append(item)
         annotation_rows = sum(self._source_annotations.values())
         unresolved = list(self._unresolved)
-        if contigs:
-            unresolved.insert(
-                0,
-                f"length_bp is not present for {len(contigs)} contigs; resolve from the cited reference FASTA before PostgreSQL import",
-            )
+        if contigs and not self._contig_registry_ok:
+            if self._contig_registry_loaded:
+                message = (
+                    f"length/provenance for {len(contigs)} contigs is not validated; "
+                    "resolve the tracked reference contig registry before PostgreSQL import"
+                )
+            else:
+                message = (
+                    f"length_bp is not present for {len(contigs)} contigs; "
+                    "resolve the cited reference FASTA before PostgreSQL import"
+                )
+            if message not in unresolved:
+                unresolved.insert(0, message)
         asset_rows = sorted(self._verified_assets, key=lambda row: row["asset_id"])
         postgresql_ready = validation_status == "validated" and not unresolved
         plan = {
@@ -1007,7 +1307,7 @@ class CanonicalReleaseValidator:
                     "rows": publications,
                 },
                 "assemblies": {"row_count": len(assemblies), "keys": assemblies},
-                "contigs": {"row_count": len(contigs), "keys": contigs},
+                "contigs": {"row_count": len(contigs), "keys": contigs, "rows": contigs},
                 "sources": self._source_plan(source_ids),
                 "source_accessions": {"row_count": len(accessions), "keys": accessions},
                 "samples": {"row_count": len(samples), "keys": samples},
@@ -1158,6 +1458,10 @@ class CanonicalReleaseValidator:
                 self._issue("source_annotations_status=published 但缺少 source_annotations.tsv", source_id, annotation_path, 1)
         actual_public_rows = sum(len(rows) for rows in self._source_rows.values())
         self._check_source_set_and_metadata(source_ids)
+        # Resolve reference lengths only after all endpoint pairs and their
+        # source provenance have been collected.  A missing registry is an
+        # unresolved query-layer prerequisite, not a canonical-release error.
+        self._load_contig_registry()
         expected_summary = {
             "source_count": len(source_ids),
             "published_standardized_sources": public_count,
@@ -1204,7 +1508,12 @@ class CanonicalReleaseValidator:
 def validate_release(
     release_root: str | Path = "data/public/v0.2.0",
     repo_root: str | Path | None = None,
+    contig_registry: str | Path | None = None,
 ) -> ValidationReport:
     """Validate a release and return a :class:`ValidationReport`."""
 
-    return CanonicalReleaseValidator(release_root, repo_root=repo_root).validate()
+    return CanonicalReleaseValidator(
+        release_root,
+        repo_root=repo_root,
+        contig_registry=contig_registry,
+    ).validate()

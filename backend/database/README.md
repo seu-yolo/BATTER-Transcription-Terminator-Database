@@ -80,10 +80,16 @@ python3 scripts/import_bted_v03.py validate \
 `genes`/`endpoint_gene_context`。当前真实 v0.2.0 预检为 22 个 source、21 个
 published、1 个 audit-only、28,399 条 endpoint，publication/assembly/contig/sample/
 accession/source-annotation 数量分别为 13/20/47/21/32/17 个文件（24,887 行附表），
-并规划 127 个已验证的小型 canonical assets。contig 长度不在端点表中，plan 明确列为
-unresolved；因此 `canonical_validation_status=validated`，但
-`postgresql_ready=false`，不能把校验通过误认为已满足 schema 的 NOT NULL length。
-不用坐标最大值猜测。只有未来从参考 FASTA 核实长度后，才可进入带 staging/atomic
-switch 的 PostgreSQL importer。plan 中的 assets 使用无 `/` 的稳定 asset_id、schema
-允许的 `asset_kind` 和 `is_public` 字段；source accession 使用
-`accession_namespace`，不把别名当作物理列。
+并规划 127 个已验证的小型 canonical assets。47 个 contig 的长度和 provenance 已由
+现有 v0.2 JBrowse release bundle 中的 FAI、config 和根 `SHA256SUMS.txt` 交叉核实，并
+保存为 `data/registry/reference_contigs.v0.2.0.tsv` 及其 JSON provenance；没有下载新
+参考序列，也没有从 endpoint 最大坐标猜测长度。因此当前
+`canonical_validation_status=validated` 且 `postgresql_ready=true`，但这仍只表示满足
+写库前预检，不表示已经执行 INSERT。缺少或不通过该 registry 时，canonical 校验仍可
+保持 validated，但 `postgresql_ready=false`。长度边界允许 endpoint 正好落在 contig
+最后一个碱基上，即 `length_bp >= max_endpoint_position_1based`。
+
+plan 中的 assets 使用无 `/` 的稳定 asset_id、schema 允许的 `asset_kind` 和 `is_public`
+字段；source accession 使用 `accession_namespace`，不把别名当作物理列。参考 FASTA/FAI
+不进入 Git 或当前 canonical asset 计划，registry 只记录可复核的 asset basename 和
+checksum。builder 和检查命令见 [`docs/v0.3/importer.md`](../../docs/v0.3/importer.md)。

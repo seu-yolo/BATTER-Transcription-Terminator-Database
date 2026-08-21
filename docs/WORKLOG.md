@@ -109,6 +109,49 @@ PostgreSQL 资源。
   当前不猜测；随后才能满足 schema `contigs.length_bp`。
 - FastAPI/Next.js、Range 资产代理、JBrowse 服务配置、Neon/Render/Vercel 部署仍未开始。
 
+## 2026-08-21 —— v0.3 第三阶段 A：参考 contig 长度与 provenance 注册
+
+**分支：** `feature/bted-v0.3-dynamic-service`
+**范围：** 只使用既有 v0.2 JBrowse release bundle 补齐查询层元数据；没有下载新参考
+序列、没有修改 v0.2 canonical release/website、没有连接 PostgreSQL。
+
+### 完成内容
+
+1. 新增 `scripts/build_reference_contig_registry.py`。它解析每个 published source 的
+   config 和 `IndexedFastaAdapter`，要求 source 前缀、FAI contig 精确命中 canonical
+   endpoint，并核对 FASTA/FAI/config 与 bundle 根 `SHA256SUMS.txt` 的摘要；不从 endpoint
+   最大坐标猜测 contig 长度。
+2. 从只读 bundle
+   `/Users/seu_yolo/Desktop/BGIRNA/.worktrees/bted-v0.2/dist/BTED-v0.2.0-jbrowse/`
+   生成并追踪 `data/registry/reference_contigs.v0.2.0.tsv` 与对应 JSON provenance。注册
+   表覆盖 21 个 published source、47 个 endpoint contig；共享 contig 的 source ID、FAI
+   长度、FASTA/FAI checksum 不一致会阻断生成。参考 FASTA/FAI 本身不进入 Git。
+3. 扩展 `backend/importer/canonical.py`：默认读取该小表，也支持 CLI
+   `--contig-registry`；检查 release version、精确 assembly/contig 集合、最大 endpoint
+   坐标覆盖（允许 endpoint 正好位于 contig 最后一个碱基）、supporting source 排序/唯一性、
+   摘要和 provenance 字段。通过后 plan 的 contig rows 带
+   `length_bp` 和 provenance，真实 v0.2.0 的 `postgresql_ready=true`；缺失 registry 时
+   保持 canonical 校验可通过但 `postgresql_ready=false`，不会降级为猜测长度。
+4. builder CLI 增加可选 `--generated-at-utc`，在重建 registry 时可以固定 provenance
+   时间；默认不传时仍使用当前 UTC 时间。`scripts/import_bted_v03.py validate` 的计划继续是只读、`write_mode=not_written`；
+   参考 registry 只保存既有 JBrowse 资产的 provenance，不加入 canonical `assets` 127 项。
+
+### 验证
+
+- 真实 builder：21 source / 47 contig，生成成功；S1_007/S1_013 的共享 contig 被合并为
+  一条 provenance 记录但 endpoint/source track 仍保持独立。
+- `tests/test_bted_v03_importer.py`：24/24 PASS；覆盖真实 registry happy path、缺失/长度
+  不足/缺失与额外 contig、tiny FAI、共享 contig 冲突、bundle checksum 失败和 CLI 计划。
+- 真实 importer：22 source / 21 published / 1 audit-only / 28,399 endpoint，contig 47，
+  `canonical_validation_status=validated`、`postgresql_ready=true`、unresolved 为空。
+
+### 未完成与风险
+
+- 尚未执行 PostgreSQL staging/atomic switch；`postgresql_ready=true` 只是满足 schema
+  预检，不代表已写库。
+- registry provenance 追溯的是既有 JBrowse bundle；若未来 bundle 重建，需重新生成并
+  审核新 release/version，不应原地覆盖已发布 registry。
+
 ## 2026-08-17 —— accession 页面收敛为既有核心字段
 
 **分支：** `feature/research-user-dataset-context-v0.1`
