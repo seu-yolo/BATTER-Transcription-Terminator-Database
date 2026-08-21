@@ -1,10 +1,43 @@
 # BTED 当前交接
 
-**更新：** 2026-08-17
+**更新：** 2026-08-21
 
-**当前分支：** `feature/research-user-dataset-context-v0.1`
+**当前分支：** `feature/bted-v0.3-dynamic-service`
 
-**当前里程碑：** `GCF_000739105.1` 已形成只依赖既有核心字段的双语科研用户试页；页面、API、HTTP 206 和动态 JBrowse 均在本地跑通，真实 Cloudflare D1 与 Hugging Face 对象上传尚未授权或执行。
+**当前里程碑：** v0.3.0 第一里程碑已完成架构契约、PostgreSQL schema 骨架和静态测试；
+没有实现前端/API/部署或新数据导入。
+
+## 2026-08-21 v0.3 架构与数据库骨架
+
+- 阅读并以 v0.2 SOP、证据边界、发布接口、release manifest、registry 和 S1_007/S1_002
+  记录为输入；v0.2 canonical release 保持不变。
+- `docs/v0.3/architecture.md` 冻结 canonical release→PostgreSQL 派生查询层关系、
+  v0.2/v0.3 并行策略和 Vercel/Render/Neon/Hugging Face/同源 Range 代理边界。
+- `docs/v0.3/browser-ui-contract.md` 冻结已批准的搜索/augmentation 入口、论文与
+  accession 可点击详情、基因/端点多级缩放、raw plus/minus BigWig 和 GFF3/TBI 展示规则。
+- `docs/v0.3/database-schema.md` 与 `backend/database/schema.sql` 覆盖
+  `release_versions`、`import_runs`、`publications`、`assemblies`、`contigs`、
+  `sources`、`source_accessions`、`samples`、`endpoints`、`source_annotations`、
+  `genes`、`endpoint_gene_context`、`assets`；endpoint 保留 v0.2 全 24 列和 provenance。
+- source-level 边界保持：22 个 source 中 21 个 published、S1_002 audit-only；Table S1
+  `used_for_batter_augmentation` 为 19 TRUE/3 FALSE。预测/不可拆分混合证据不进入公开
+  endpoint，gene clusters/Rfam 不纳入。
+- `docs/v0.3/api-contract.md` 定义 `/api/v1/stats`、sources、assemblies、endpoints、
+  genes、四类详情路由、augmentation、downloads/endpoints 和 assets Range 206/416 行为；
+  page_size 上限为 100，S1_002 不生成下载/JBrowse 入口。
+- `backend/database/README.md` 规定 staging、校验、atomic switch；禁止对生产数据库
+  直接 DROP/TRUNCATE 或覆盖既有 release。
+- `tests/test_bted_v03_schema.py`：11/11 PASS；与 `tests/test_bted_ingestion.py` 合计
+  15/15 PASS；完整 `unittest discover` 为 32/32 PASS；`git diff --check` PASS。
+
+### 接手后的下一步
+
+1. 在目标 PostgreSQL 版本执行 DDL smoke test，补充 importer 的 staging/atomic switch
+   和 release checksum 校验；不要先连接生产或改写 v0.2 文件。
+2. 根据 API 契约实现 FastAPI 只读查询和同源 asset Range 代理，先用本地 fixture 验证
+   404/422、provenance、JBrowse deep link 与单 Range 206/416。
+3. 只有契约和 importer 评审通过后，才安排 Render/Neon/Vercel/Hugging Face 部署；
+   gene context、外部协作者数据、NCBI 新数据和训练集仍需单独任务。
 
 ## 2026-08-17 核心字段页面
 

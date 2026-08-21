@@ -1,5 +1,63 @@
 # 工作日志
 
+## 2026-08-21 —— BTED v0.3 第一里程碑：架构契约与数据库骨架
+
+**分支：** `feature/bted-v0.3-dynamic-service`
+**范围：** 只建立 v0.3.0 的架构/数据库/API 契约和静态测试；没有导入 NCBI 新数据、
+没有修改 v0.2 网站或科学数据、没有实现 Next.js/FastAPI、没有部署或创建真实
+PostgreSQL 资源。
+
+### 完成内容
+
+1. 新增 `docs/v0.3/architecture.md`：冻结 canonical release 是科研真源、PostgreSQL
+   是可重建的派生查询层；说明 v0.2/v0.3 并行，以及 Vercel Next.js、Render FastAPI、
+   Neon PostgreSQL、Hugging Face 资产和同源 `/api/v1/assets/{asset_id}` Range 代理的
+   责任边界。v0.3.0 只覆盖当前仓库的 BATTER S1 内部数据，外部协作者数据不在本轮。
+2. 新增 `docs/v0.3/database-schema.md`：完整说明 release/import、publication、
+   versioned assembly/contig、source/accession/sample、24 列 endpoint、JSONB 来源
+   附表、genes/context 和 assets；记录主外键、唯一约束、1-based/BED 约束、证据拒绝、
+   S1_002 audit-only 以及 Table S1 19/3 augmentation 的来源级边界。
+3. 新增 `docs/v0.3/api-contract.md`：定义 stats、sources、assemblies、endpoints、
+   genes、augmentation、endpoint downloads 和 asset Range API，含分页/过滤、
+   provenance、404/422、JBrowse deep link、206/416 headers。augmentation 第一版只
+   表示 19 个 Table S1 TRUE 来源，不宣称逐端点训练；gene clusters/Rfam 不纳入。
+4. 新增 `backend/database/schema.sql`：无 seed data 的 PostgreSQL DDL 骨架。`endpoints`
+   明确保留当前 v0.2 `endpoints.tsv` 的全部 24 列，`signal_or_score` 用 text 保留
+   `NA`；contig/sample/release/source 通过外键与触发器隔离，source_annotations 使用
+   JSONB，prediction/mixed evidence 不能成为公开 endpoint。
+5. 新增 `backend/database/README.md`：说明 staging/校验/atomic switch 流程，并明确
+   禁止直接 drop/truncate 生产数据库或覆盖既有 release。
+6. 新增 `tests/test_bted_v03_schema.py`：无 PostgreSQL 依赖的静态 unittest，检查关键
+   表、24 列、坐标/contig/sample/release、S1_002、19/3 augmentation 和 prediction
+   evidence 边界。
+7. 根据 Sol 第一轮审查补齐四类详情 API，page_size 上限收敛为 100；修正资产 full
+   SHA-256 只在登记/import 阶段验证的 Range 语义；将 sample 关联改为 NOT NULL 复合
+   外键，保留 Table S1 原始 augmentation 列，允许 import run 重试；publication/assembly
+   增加 journal/strain，genes/context 按 release 和 GFF3 asset 隔离，source_annotations
+   支持一对多来源观察，并增加 contig 长度边界。
+8. 新增 `docs/v0.3/browser-ui-contract.md`，冻结 Search by accession、19 个来源级
+   augmentation、详情链接、基因/端点分级缩放、raw BigWig 和 GFF3/TBI 展示要求，并由
+   architecture/HANDOFF 引用。
+9. 修正 publication 的 S1 来源示例为非连续且准确的 `S1_001、S1_003–S1_005`，并为
+   `release_versions` 增加 `is_current` 只能指向 `published` release 的约束及静态断言。
+
+### 验证
+
+- `python -m unittest -v tests/test_bted_v03_schema.py`：11/11 PASS；
+- `python -m unittest -v tests/test_bted_ingestion.py`：4/4 PASS；
+- `python -m unittest -v tests/test_bted_v03_schema.py tests/test_bted_ingestion.py`：15/15 PASS；
+- `python -m unittest discover -s tests -p 'test*.py' -v`：32/32 PASS；
+- `git diff --check`：PASS（无输出）。
+
+### 未完成与风险
+
+- 尚未在真实 PostgreSQL/Neon 实例执行 DDL；下一阶段需在目标 PostgreSQL 版本做迁移
+  smoke test，再实现 importer 的 staging/atomic switch。
+- FastAPI/Next.js、真实资产上传/Range 代理、gene context 计算、训练集生成和新数据
+  导入均未开始；本轮不应把静态契约误认为已部署服务。
+- DDL 无 seed data，v0.3.0 的首次数据导入必须重新核对 release manifest checksum、
+  source manifest、许可和 24 列行数，保持 v0.2 文件不变。
+
 ## 2026-08-17 —— accession 页面收敛为既有核心字段
 
 **分支：** `feature/research-user-dataset-context-v0.1`
