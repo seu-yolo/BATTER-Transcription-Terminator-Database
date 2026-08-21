@@ -166,6 +166,7 @@ release，但响应仍必须带 `release_version`、canonical manifest 路径和
     {"accession": "CP009124.1", "name": "CP009124.1", "length_bp": 8283950}
   ],
   "source_count": 2,
+  "gene_count": 4123,
   "endpoint_count": 2848,
   "provenance": {"release_version": "v0.3.0"}
 }
@@ -221,9 +222,11 @@ ID/原始行引用），以及通用 `page`/`page_size`。
 ### 2.5 `GET /api/v1/genes`
 
 支持 `release_version`、`assembly_accession`、`contig_accession`、`gene_id`、
-`locus_tag`、`feature_type`、`start_min`、`start_max`。返回 genes 的 1-based 区间、
-strand、assembly/contig 和 provenance。第一版不返回 gene clusters、Rfam 命中或推测的
-终止功能；`endpoint_gene_context` 尚未计算时不能伪造 `nearest_gene`。
+`locus_tag`、`feature_type`、`start_min`、`start_max`，并提供普通分页/排序。返回 genes
+的 1-based 区间、strand、assembly/contig 和 provenance。assembly list/detail 同时返回
+同一 release 的 `gene_count`，作为 GFF-derived query layer 的记录数。第一版不返回 gene
+clusters、Rfam 命中或推测的终止功能；`endpoint_gene_context` 尚未计算时不能伪造
+`nearest_gene`。
 
 ### 2.6 `GET /api/v1/augmentation`
 
@@ -384,7 +387,7 @@ allowlist/公开状态、登记的 `byte_size`、origin 返回的 `Content-Range
 #### `GET /api/v1/assemblies/{assembly_id}`
 
 返回 assembly 详情：带版本的 accession、strain/organism、contigs、该 release 的
-独立 source tracks、端点计数、已登记参考/GFF3 asset 及 provenance。`assembly_id` 是
+独立 source tracks、gene_count、端点计数、已登记参考/GFF3 asset 及 provenance。`assembly_id` 是
 数据库返回的稳定资源 ID；响应同时给出 `assembly_accession`，不能用不带版本的名称
 代替。每个 source track 都链接到 `/api/v1/sources/{source_id}`，相同 assembly 的
 不同研究不能合并为一个 source。

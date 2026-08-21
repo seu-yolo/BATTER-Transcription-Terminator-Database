@@ -1078,3 +1078,10 @@ materializer version 升为 `bted-materializer-0.3.0-b2`，因此重新物化时
 bundle checksum 会确定性变化，表行数仍保持默认 127、inventory 模式 211。PostgreSQL
 preflight 同步要求 manifest origin base/host 有效，并拒绝 origin URL 与 logical path
 不一致的 bundle。
+
+## 2026-08-22 —— v0.3 gene query 用户入口
+
+assembly list/detail 现在返回同一 release 的 `gene_count`；新增 `/genes` 前端目录，调用
+现有 `GET /api/v1/genes` 支持 assembly、contig、locus tag、stable gene ID、feature type
+和 1-based start 区间过滤。列表提供 gene detail 与 assembly context 入口，导航增加 Genes。
+本轮只呈现 GFF-derived annotation，不计算 `endpoint_gene_context`，也未修改生物数据。

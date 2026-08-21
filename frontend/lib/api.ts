@@ -75,6 +75,7 @@ export type Assembly = {
   contigs: Contig[];
   source_count: number;
   endpoint_count: number;
+  gene_count: number;
   source_tracks: Array<{ source_id: string; record_count?: number }>;
   links?: { jbrowse?: string | null; jbrowse_config?: string | null };
   provenance: Record<string, unknown>;
@@ -176,5 +177,6 @@ export const getAssemblies = (params: Record<string, string | number | boolean |
 export const getAssembly = (assemblyId: string) => request<{ release: Release } & Assembly>(`/api/v1/assemblies/${encodeURIComponent(assemblyId)}`);
 export const getEndpoint = (endId: string) => request<{ release: Release } & Endpoint>(`/api/v1/endpoints/${encodeURIComponent(endId)}`);
 export const getEndpoints = (params: Record<string, string | number | boolean | undefined> = {}) => request<Page<Endpoint>>("/api/v1/endpoints", params);
+export const getGenes = (params: Record<string, string | number | boolean | undefined> = {}) => request<Page<Gene>>("/api/v1/genes", params);
 export const getGene = (geneId: string) => request<{ release: Release } & Gene>(`/api/v1/genes/${encodeURIComponent(geneId)}`);
 export const getAugmentation = (params: Record<string, string | number | boolean | undefined> = {}) => request<Page<Source> & { scope: string; training_claim: string; eligible_source_count: number }>("/api/v1/augmentation", params);

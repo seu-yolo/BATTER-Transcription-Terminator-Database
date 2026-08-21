@@ -308,6 +308,7 @@ class ReadService:
             "assets": row.get("assets", []) if isinstance(row.get("assets", []), list) else [],
             "source_count": len(tracks),
             "endpoint_count": int(row.get("endpoint_count", 0)),
+            "gene_count": int(row.get("gene_count", 0) or 0),
             "source_tracks": tracks,
             "provenance": {
                 "release_version": release.release_version,

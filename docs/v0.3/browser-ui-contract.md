@@ -1,6 +1,7 @@
 # BTED v0.3 浏览器与首页 UI 契约
 
-**状态：** 已批准的产品/可视化契约；本里程碑只冻结规则，不实现 Next.js 或 JBrowse 组件
+**状态：** 已批准的产品/可视化契约；v0.3 前端已实现目录、详情与查询入口，JBrowse
+仍使用登记 config/asset contract，不改变 canonical release
 **适用范围：** v0.3 API/浏览器实现；不改变 canonical release、24 列 endpoint 或证据边界
 
 ## 1. 首页入口
@@ -18,6 +19,12 @@
 
 两入口都显示当前 `release_version` 和 provenance 入口。首页不把 13 篇论文、22 个
 来源和 endpoint 数量混成一个无单位的“数据集数”。
+
+基因目录入口为 `/genes`，调用 `GET /api/v1/genes`，支持 assembly、contig、locus tag、
+stable gene ID、feature type 和 1-based start 区间过滤。列表显示 gene/locus、assembly/
+contig、坐标和 strand；每行可进入 gene detail 或 assembly context。Assembly list/detail
+显示同一 release 的 `gene_count`，并链接到 `/genes?assembly_accession=...`。该入口只呈现
+GFF-derived annotation，不计算或解释 `endpoint_gene_context`。
 
 ## 2. 可点击信息与右侧详情
 

@@ -23,6 +23,7 @@ RELEASE = ReleaseContext("v0.3.0", "published", "a" * 64, 17)
 ASSEMBLY = "GCF_000739105.1"
 CONTIG = "CP009124.1"
 END_ID = "BTED_S1_007_CP009124_plus_67368"
+GENE_ID = f"{ASSEMBLY}:gene-1"
 
 
 def _source(source_id: str, *, audit: bool = False) -> dict[str, Any]:
@@ -90,6 +91,24 @@ def _endpoint() -> dict[str, Any]:
     return row
 
 
+def _gene() -> dict[str, Any]:
+    return {
+        "gene_id": GENE_ID,
+        "locus_tag": "SLIV_00320",
+        "gene_name": "test_gene",
+        "feature_type": "gene",
+        "start_1based": 100,
+        "end_1based": 900,
+        "strand": "+",
+        "assembly_accession": ASSEMBLY,
+        "contig_accession": CONTIG,
+        "contig_name": CONTIG,
+        "annotation_asset_id": "assembly--gff",
+        "annotation_sha256": "c" * 64,
+        "attributes": {"product": "test product"},
+    }
+
+
 class FakeRepository:
     def __init__(self) -> None:
         self.sources = {
@@ -97,6 +116,7 @@ class FakeRepository:
             "BATTER_S1_002": _source("BATTER_S1_002", audit=True),
         }
         self.endpoints = [ _endpoint() ]
+        self.genes = [_gene()]
         self.release_calls: list[str | None] = []
 
     def resolve_release(self, release_version: str | None = None) -> ReleaseContext:
@@ -143,6 +163,7 @@ class FakeRepository:
             "assembly_accession": ASSEMBLY, "assembly_name": "test", "organism_name": "Escherichia coli",
             "strain": "K-12", "contigs": [{"accession": CONTIG, "name": CONTIG, "length_bp": 100000}],
             "source_tracks": [{"source_id": "BATTER_S1_007", "record_count": 1}], "endpoint_count": 1,
+            "gene_count": len(self.genes),
         }]
         return rows, len(rows)
 
@@ -163,10 +184,19 @@ class FakeRepository:
         return next((row for row in self.endpoints if row["end_id"] == end_id), None)
 
     def list_genes(self, release: ReleaseContext, filters: Mapping[str, Any], *, offset: int, limit: int, sort: str, descending: bool):
-        return [], 0
+        rows = list(self.genes)
+        for key in ("assembly_accession", "contig_accession", "gene_id", "locus_tag", "feature_type"):
+            if filters.get(key):
+                rows = [row for row in rows if row[key] == filters[key]]
+        if filters.get("start_min") is not None:
+            rows = [row for row in rows if row["start_1based"] >= filters["start_min"]]
+        if filters.get("start_max") is not None:
+            rows = [row for row in rows if row["start_1based"] <= filters["start_max"]]
+        rows.sort(key=lambda row: row.get(sort, row["gene_id"]), reverse=descending)
+        return rows[offset:offset + limit], len(rows)
 
     def get_gene(self, release: ReleaseContext, gene_id: str):
-        return None
+        return next((row for row in self.genes if row["gene_id"] == gene_id), None)
 
     def list_augmentation(self, release: ReleaseContext, *, offset: int, limit: int):
         rows = [row for row in self.sources.values() if row["used_for_batter_augmentation"]]
@@ -220,6 +250,32 @@ class TestBtedV03ApiService(unittest.TestCase):
         self.assertEqual(audit["record_count"], 0)
         self.assertNotIn("endpoints_download", audit["links"])
         self.assertNotIn("jbrowse", audit["links"])
+
+    def test_gene_query_and_assembly_count(self) -> None:
+        result = self.service.list_genes(
+            None,
+            filters={"assembly_accession": ASSEMBLY, "contig_accession": CONTIG, "locus_tag": "SLIV_00320"},
+            page=1,
+            page_size=10,
+            sort="gene_id",
+            order="asc",
+        )
+        self.assertEqual(result["pagination"]["total"], 1)
+        self.assertEqual(result["data"][0]["gene_id"], GENE_ID)
+        self.assertEqual(result["data"][0]["locus_tag"], "SLIV_00320")
+        detail = self.service.gene_detail(None, GENE_ID)
+        self.assertEqual(detail["start_1based"], 100)
+        self.assertEqual(detail["attributes"]["product"], "test product")
+
+        assemblies = self.service.list_assemblies(
+            None,
+            filters={"assembly_accession": ASSEMBLY},
+            page=1,
+            page_size=10,
+            sort="assembly_accession",
+            order="asc",
+        )
+        self.assertEqual(assemblies["data"][0]["gene_count"], 1)
 
     def test_source_jbrowse_link_requires_public_endpoint_bed(self) -> None:
         row = self.repository.sources["BATTER_S1_007"]
@@ -338,6 +394,44 @@ class NotFoundConnection(RecordingConnection):
         self.closed = False
 
 
+class AssemblyCursor:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.current_sql = ""
+        self.closed = False
+
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> None:
+        self.current_sql = sql
+        self.calls.append((sql, params))
+
+    def fetchone(self) -> tuple[Any, ...]:
+        if "SELECT COUNT(*) FROM assemblies" in self.current_sql:
+            return (1,)
+        return ("v0.3.0", "published", "a" * 64, 17)
+
+    def fetchall(self) -> list[tuple[Any, ...]]:
+        return [(
+            1, ASSEMBLY, "test", "Escherichia coli", "K-12", None, None,
+            [{"accession": CONTIG, "name": CONTIG, "length_bp": 100000}],
+            [], [{"source_id": "BATTER_S1_007", "record_count": 1}], 1, 7,
+        )]
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class AssemblyConnection:
+    def __init__(self) -> None:
+        self.cursor_instance = AssemblyCursor()
+        self.closed = False
+
+    def cursor(self) -> AssemblyCursor:
+        return self.cursor_instance
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class TestBtedV03PostgresReadRepository(unittest.TestCase):
     def test_release_query_is_parameterized_and_connection_is_closed(self) -> None:
         connection = RecordingConnection()
@@ -356,6 +450,25 @@ class TestBtedV03PostgresReadRepository(unittest.TestCase):
             repository.validate_assembly(RELEASE, "GCF_999999999.1")
         with self.assertRaises(RepositoryNotFound):
             repository.validate_contig(RELEASE, ASSEMBLY, "missing-contig")
+
+    def test_assembly_query_returns_gene_count_from_same_release(self) -> None:
+        connection = AssemblyConnection()
+        repository = PostgresReadRepository(lambda: connection)
+        rows, total = repository.list_assemblies(
+            RELEASE,
+            {"assembly_accession": ASSEMBLY},
+            offset=0,
+            limit=10,
+            sort="assembly_accession",
+            descending=False,
+        )
+        self.assertEqual(total, 1)
+        self.assertEqual(rows[0]["gene_count"], 7)
+        select_sql, params = connection.cursor_instance.calls[1]
+        self.assertIn("FROM genes AS gg", select_sql)
+        self.assertEqual(params[:4], (RELEASE.release_version,) * 4)
+        self.assertTrue(connection.cursor_instance.closed)
+        self.assertTrue(connection.closed)
 
 
 @unittest.skipUnless(importlib.util.find_spec("fastapi"), "FastAPI optional dependency is not installed")
@@ -391,6 +504,13 @@ class TestBtedV03FastApiRuntime(unittest.TestCase):
             set(V02_ENDPOINT_COLUMNS),
             set(endpoint_response.json()["data"][0]) - {"provenance"},
         )
+
+        gene_response = client.get("/api/v1/genes?locus_tag=SLIV_00320")
+        self.assertEqual(gene_response.status_code, 200)
+        self.assertEqual(gene_response.json()["data"][0]["gene_id"], GENE_ID)
+        assembly_response = client.get(f"/api/v1/assemblies/{ASSEMBLY}")
+        self.assertEqual(assembly_response.status_code, 200)
+        self.assertEqual(assembly_response.json()["gene_count"], 1)
 
 
 if __name__ == "__main__":

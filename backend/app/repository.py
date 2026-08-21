@@ -415,12 +415,21 @@ class PostgresReadRepository:
             "AND sa.source_pk = ss.source_pk AND sa.is_public = TRUE), '[]'::json)) ORDER BY ss.source_id) "
             "FROM sources AS ss WHERE ss.release_version = %s AND ss.assembly_id = a.assembly_id), '[]'::json), "
             "(SELECT COUNT(*) FROM endpoints AS ee JOIN sources AS es ON es.release_version = ee.release_version "
-            "AND es.source_pk = ee.source_pk WHERE ee.release_version = %s AND es.assembly_id = a.assembly_id)"
+            "AND es.source_pk = ee.source_pk WHERE ee.release_version = %s AND es.assembly_id = a.assembly_id), "
+            "(SELECT COUNT(*) FROM genes AS gg WHERE gg.release_version = %s AND gg.assembly_id = a.assembly_id)"
         )
         count_params = list(params)
-        # The three release placeholders occur in the SELECT subqueries before
+        # The four release placeholders occur in the SELECT subqueries before
         # the filter placeholders in WHERE.
-        query_params = [release.release_version, release.release_version, release.release_version, *params, limit, offset]
+        query_params = [
+            release.release_version,
+            release.release_version,
+            release.release_version,
+            release.release_version,
+            *params,
+            limit,
+            offset,
+        ]
         with self._cursor() as cursor:
             cursor.execute(f"SELECT COUNT(*) FROM assemblies AS a WHERE {where}", tuple(count_params))
             total = int(cursor.fetchone()[0])
@@ -443,6 +452,7 @@ class PostgresReadRepository:
                 "assets": _json_value(row[8], []),
                 "source_tracks": _json_value(row[9], []),
                 "endpoint_count": int(row[10]),
+                "gene_count": int(row[11]),
             })
         return rows, total
 

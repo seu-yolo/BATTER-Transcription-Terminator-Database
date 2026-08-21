@@ -13,6 +13,7 @@ const requiredFiles = [
   "app/sources/[sourceId]/page.tsx",
   "app/assemblies/page.tsx",
   "app/assemblies/[assemblyId]/page.tsx",
+  "app/genes/page.tsx",
   "app/endpoints/[endId]/page.tsx",
   "app/genes/[geneId]/page.tsx",
   "app/augmentation/page.tsx",
@@ -31,6 +32,7 @@ const api = read("lib/api.ts");
 const config = read("next.config.mjs");
 const source = read("app/sources/[sourceId]/page.tsx");
 const explore = read("app/explore/page.tsx");
+const genes = read("app/genes/page.tsx");
 const gene = read("app/genes/[geneId]/page.tsx");
 const assertions = [
   [home, "getStats", "home loads dynamic release statistics"],
@@ -44,6 +46,10 @@ const assertions = [
   [source, "Download endpoint table", "source download entry exists"],
   [explore, "Filter records", "endpoint filters are server-side"],
   [explore, "Assembly view", "endpoint context entry exists"],
+  [api, "getGenes", "API wrapper includes gene list"],
+  [genes, "Filter genes", "gene list filters are server-side"],
+  [genes, "Assembly context", "gene list provides assembly context"],
+  [genes, "JBrowse context", "gene list provides browser context"],
   [api, "getGene", "API wrapper includes gene detail"],
   [gene, "getGene", "gene detail page loads gene"],
   [gene, "±500 bp", "gene page provides a flanked JBrowse window"],
