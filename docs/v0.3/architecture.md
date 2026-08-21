@@ -1,6 +1,8 @@
 # BTED v0.3 架构契约
 
-**状态：** v0.3.0 C1（架构契约 + 数据库骨架 + 只读 FastAPI 查询层）
+**状态：** v0.3.0 developer preview（importer、materialized bundle、PostgreSQL writer、
+read API、同源 asset proxy、动态 JBrowse config、Next.js 页面、客户端 Explore 和 GFF gene
+query 已实现；尚未上线）
 **适用版本：** v0.2.0 与 v0.3.0 并行
 **范围：** 当前仓库已经审计的 BATTER S1 内部数据
 
@@ -59,6 +61,9 @@ Hugging Face 对象。对象的 byte size、SHA-256、媒体类型、是否支�
 归属均由 `assets` 表记录。完整 SHA-256 在资产登记/import 阶段复算；partial request
 只校验 allowlist、登记 byte size、Content-Range 和返回长度，不在每次请求重算整文件。
 
+上面的 Vercel/Render/Neon/Hugging Face 组合是目标生产拓扑，不是当前已部署状态；当前
+分支是本地可验证的 developer preview。
+
 浏览器的信息层级、缩放行为、证据措辞和入口布局由单独的
 [`browser-ui-contract.md`](browser-ui-contract.md) 冻结；它是 Next.js/JBrowse 实现的
 产品契约，不改变本架构的 canonical release 或 evidence boundary。
@@ -67,9 +72,8 @@ Hugging Face 对象。对象的 byte size、SHA-256、媒体类型、是否支�
 
 ### 3.1 canonical release -> database
 
-未来 importer 先在 staging 事务/临时 schema 中解析 release manifest 与文件，执行
-24 列、坐标、contig、证据和 checksum 校验；只有整批通过后才把一个新的
-`release_version` 标为可查询版本。production 表不通过 `DROP` 重置，不在已有版本上
+当前 v0.3 importer 先离线解析并验证 release manifest 与文件，物化为 staging bundle；
+PostgreSQL writer 再使用一个 `SERIALIZABLE` transaction 写入。production 表不通过 `DROP` 重置，不在已有版本上
 覆盖行。详细的 staging/atomic switch 原则见
 [`backend/database/README.md`](../../backend/database/README.md)。
 
@@ -129,16 +133,25 @@ canonical 小表及其 provenance，不包括重新下载的原始测序数据�
 - 资产 Range 代理只能服务登记且 checksum 可验证的对象，不能把 FastAPI 变成任意
   URL 代理。
 
-## 6. C1/C2 已做与未做
+## 6. C1/C2/D1/D2/D3 已做与当前边界
 
-C1 在 `backend/app/` 实现了不写库的 FastAPI read layer：查询只读 PostgreSQL、按 release
-和公开证据边界分页返回 sources/assemblies/endpoints/genes/augmentation，并提供 endpoint
+C1 在 `backend/app/` 已实现只读 FastAPI read layer：查询只读 PostgreSQL、按 release 和
+公开证据边界分页返回 sources/assemblies/endpoints/genes/augmentation，并提供 endpoint
 TSV/BED6 导出；service/repository 可用 fake repository 离线测试。它不改变 canonical release
 或 v0.2 网站。
 
-C2 增加了 `/api/v1/assets/{asset_id}` 的登记资产 GET/HEAD/单 Range 同源代理：只允许
+C2 已增加 `/api/v1/assets/{asset_id}` 的登记资产 GET/HEAD/单 Range 同源代理：只允许
 published release 中 `is_public=true` 的资产，origin 必须是登记的 HTTPS URL，JBrowse config
-链接也通过该同源入口生成。C2 不实现多 Range、缓存、重试、整文件运行时 hash、HF 上传或
-真实网络 smoke test。Next.js 页面、Render/Neon/Hugging Face/Vercel 部署、真实 PostgreSQL
-smoke test、NCBI 新数据导入、gene context 计算、训练集生成或 JBrowse 配置重建仍未完成；
-不能把离线 contract tests 写成部署完成。
+链接也通过该同源入口生成。C2 本身不实现多 Range、缓存、重试、整文件运行时 hash、HF
+上传或真实网络 smoke test；Next.js 页面和动态 JBrowse config 已在 D1/D2 实现。
+
+D1/D2/D3 已实现 Next.js App Router 页面、客户端动态 `/explore`、动态 JBrowse config 以及
+基于真实 GFF/FAI 的 gene query；importer/materializer 和 PostgreSQL writer 也已实现真实
+GFF gene rows 的物化与批量写入。当前计数为 22 个来源（21 published + 1 audit-only）、
+20 个 release assembly records、19 个去重 published browser assemblies、28,399 个
+endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public candidates）。
+
+这些结果和测试是本地/隔离环境验证，不把 local simulated audit 计作远端证据。v0.3 尚未上线；
+剩余实际事项只有 Hugging Face/object upload 与 164 个候选对象的 HTTP Range audit、真实
+PostgreSQL/容器导入 smoke（本机没有 Docker/PostgreSQL）、Render/Neon/Vercel production
+deployment，以及 `endpoint_gene_context` 的定义/计算。

@@ -4,11 +4,19 @@
 
 **当前分支：** `feature/bted-v0.3-dynamic-service`
 
-**当前里程碑：** v0.3.0 已完成架构契约、PostgreSQL schema 骨架、只读 canonical
-release 校验/导入计划、B1 确定性 JSONL 物化、B2 离线事务 writer，以及基于既有 v0.2
-JBrowse bundle 的 47 个参考 contig 长度/provenance 注册；C1 只读 FastAPI 查询层和 C2
-登记资产 GET/HEAD/单 Range 代理已实现并通过纯 Python contract tests，但没有连接真实
-PostgreSQL、远端资产 smoke test、前端或部署。
+**当前里程碑：** v0.3.0 developer preview 已实现 importer、materialized bundle、PostgreSQL
+writer、只读 FastAPI read API、同源 asset proxy、动态 JBrowse config、Next.js 页面、客户端
+动态 Explore 和基于真实 GFF 的 gene query；并保留基于既有 v0.2 JBrowse bundle 的 47 个
+canonical contig registry 行。当前计数为 22 个来源（21 `published_standardized` + 1
+`audit_only`）、20 个 release assembly records、19 个去重 published browser assemblies、
+28,399 个 endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public
+candidates）。当前仍未连接真实 PostgreSQL/容器、未完成远端资产上传与 Range audit，也未做
+production deployment；因此不能把 v0.3 写成已上线。
+
+**最新 handoff 参考：** `96577c8`、`7dbd580`。
+
+**当前验证：** Python 全量测试 126/126 PASS；frontend `pnpm run check-contract`、
+`pnpm run build` 和 `git diff --check` PASS。local simulated audit 不计作远端证据。
 
 ## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
 
@@ -336,9 +344,9 @@ published release 中 `is_public=true` 的资产，origin 必须是登记的 HTT
 `origin_host` 一致；无 Range 的 GET/HEAD 返回登记元数据，单 Range 返回 206，非法/多段/不
 支持 Range 返回 416 和 `Content-Range: bytes */size`。路由不接受任意 `url` 查询参数；
 published source 的 JBrowse config 现在通过同源 asset URL 作为 URL-encoded `config` 参数，
-S1_002 仍无入口。C2 不实现多 Range、缓存、重试、整文件运行时 hash、HF 上传、远端网络
-smoke test、Next.js 或部署。FastAPI/uvicorn/httpx/psycopg3 仅在 `requirements-v03.txt`
-声明，当前环境未安装。
+S1_002 仍无入口。C2 本阶段不实现多 Range、缓存、重试、整文件运行时 hash、HF 上传或远端
+网络 smoke test；Next.js 页面、客户端 Explore 和动态 JBrowse config 已在 D1/D2 实现。
+FastAPI/uvicorn/httpx/psycopg3 由 `requirements-v03.txt` 声明，runtime 验证按隔离环境执行。
 
 验证命令：
 
@@ -371,15 +379,16 @@ test。下一步如要上线，应在隔离环境安装依赖，验证真实
 
 新增独立目录 `frontend/`，不替换 v0.2 site。它是 English-only Next.js App Router 科研用户
 界面，消费 C1/C2 的 `/api/v1/*` 只读接口：首页提供动态统计与 accession/augmentation
-入口；source、assembly、endpoint 详情和 `/explore` 筛选表；`/augmentation` 来源级信息。
+入口；source、assembly、endpoint 详情、客户端动态 `/explore` 筛选表、`/genes` gene query
+和 `/augmentation` 来源级信息。
 同一 assembly 的多个 source 保持独立，audit-only source 没有 endpoint 下载或 JBrowse 按钮。
 
 服务端 API origin 由 `BTED_API_ORIGIN` 提供，浏览器使用同源 `/api/v1`，rewrite 不含 localhost；
 配置和运行说明在 `frontend/README.md`。本轮执行依赖无关的
 `node frontend/scripts/check-contract.mjs`（PASS），并在已有 Node 依赖环境执行
-`pnpm run build`（PASS：编译、类型检查和静态页面生成均成功）；没有执行真实浏览器
-smoke test、API/数据库或部署 smoke test。下一步将 `BTED_API_ORIGIN` 指向 C1/C2 API 后做
-浏览器验收，再决定 Pages 或带服务端运行时的部署方式；不要把 API 凭据写入仓库。
+`pnpm run build`（PASS：编译、类型检查和静态页面生成均成功）；仍没有执行真实浏览器
+smoke test、API/数据库或部署 smoke test。后续若部署，才将 `BTED_API_ORIGIN` 指向目标
+C1/C2 API 并做浏览器验收；不要把 API 凭据写入仓库。
 
 ## D2 动态 JBrowse 接手说明（2026-08-22）
 
@@ -484,3 +493,21 @@ prepare focused 2/2 PASS。默认环境全量 `unittest discover` 当前为 123 
 Materializer `bted-materializer-0.3.0-b2` 已统一所有 asset origin 为
 `<asset_origin_base>/<logical_path>`。重新物化会改变 assets/manifest/bundle checksum，但
 默认 127 与 inventory 211 行数不变；`asset_id` 不再用于拼接对象存储 URL。
+
+## v0.3 developer preview 当前边界收口（2026-08-22）
+
+本分支当前已经具备 importer/materialized bundle/PostgreSQL writer/read API、同源 asset
+proxy、动态 JBrowse config、Next.js pages、客户端动态 Explore 和 GFF-derived gene query。
+真实数据计数为 22 个来源（21 published + 1 audit-only）、20 个 release assembly records、
+19 个去重 published browser assemblies、28,399 个 endpoints、95,437 个 genes，以及 211
+个 materialized assets，其中 164 个是 public candidates。public candidate 仍未完成远端
+验证，local simulated audit 不计作 remote evidence。
+
+剩余事项仅包括：
+
+- 没有实际 Hugging Face/object upload，也没有完成全部 164 个候选对象的 HTTP Range audit；
+- 没有真实 PostgreSQL/container import smoke（本机没有 Docker/PostgreSQL）；
+- 没有 Render/Neon/Vercel production deployment；
+- `endpoint_gene_context` 尚未定义或计算。
+
+因此 v0.3 仍是 developer preview，不应写成已上线。

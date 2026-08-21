@@ -26,6 +26,43 @@ v0.2.0 保留固定的 24 列核心端点表，并增加通过 `end_id` 关联�
 - [数据入库 SOP v0.2](docs/standards/BTED_数据入库标准流程_v0.2.md)
 - [可编辑 draw.io 流程图](docs/diagrams/BTED_v0.2_数据入库与发布流程.drawio)
 
+## BTED v0.3 developer preview
+
+当前分支 `feature/bted-v0.3-dynamic-service` 提供尚未上线的 v0.3 developer preview。
+它已经实现 importer、materialized bundle、PostgreSQL writer、只读 FastAPI read API、同源
+asset proxy、动态 JBrowse config、Next.js 页面、客户端动态 Explore，以及基于真实 GFF 的
+gene query；这些组件仍以 canonical release 和登记资产为真源，不改写 v0.2 发布目录。
+
+当前 release/query layer 的计数如下：
+
+| 指标 | 当前数量 |
+|---|---:|
+| 来源记录 | 22（21 `published_standardized` + 1 `audit_only`） |
+| release 中的 assembly records | 20 |
+| 去重后的 published browser assemblies | 19 |
+| endpoint records | 28,399 |
+| GFF-derived genes | 95,437 |
+| materialized assets | 211（其中 164 个 public candidates） |
+
+本地开发入口：
+
+```bash
+cd frontend
+cp .env.example .env.local
+# 在 .env.local 设置 BTED_API_ORIGIN，例如 http://127.0.0.1:8017
+pnpm install
+pnpm run dev
+```
+
+契约检查和生产构建分别使用 `pnpm run check-contract` 与 `pnpm run build`；更多运行说明见
+[`frontend/README.md`](frontend/README.md) 与 [`docs/v0.3/architecture.md`](docs/v0.3/architecture.md)。
+
+v0.3 仍不是生产上线。剩余的实际边界只有：尚未执行 Hugging Face/object upload 与全部
+164 个候选对象的 HTTP Range audit；尚未在真实 PostgreSQL/容器中执行导入 smoke（本机没有
+Docker/PostgreSQL）；尚未进行 Render/Neon/Vercel production deployment；
+`endpoint_gene_context` 尚未定义或计算。任何本地 simulated audit 都不计作远端证据，164 个
+public candidates 也不等于已经公开可访问。
+
 ## 数据边界
 
 | 公开层 | 说明 |
