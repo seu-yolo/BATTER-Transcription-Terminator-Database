@@ -14,6 +14,17 @@ from .materialize import (
     build_materialization_bundle,
     materialize_release,
 )
+from .postgres import (
+    BundleVerification,
+    LoadResult,
+    PostgresWriterError,
+    connect_psycopg_from_env,
+    database_url_from_env,
+    load_bundle,
+    promote_bundle,
+    verify_bundle,
+    verify_summary,
+)
 
 __all__ = [
     "CanonicalReleaseValidator",
@@ -26,4 +37,13 @@ __all__ = [
     "MaterializationResult",
     "materialize_release",
     "build_materialization_bundle",
+    "BundleVerification",
+    "LoadResult",
+    "PostgresWriterError",
+    "connect_psycopg_from_env",
+    "database_url_from_env",
+    "load_bundle",
+    "promote_bundle",
+    "verify_bundle",
+    "verify_summary",
 ]

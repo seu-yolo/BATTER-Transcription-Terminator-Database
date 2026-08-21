@@ -1,12 +1,13 @@
 # BTED 当前交接
 
-**更新：** 2026-08-21
+**更新：** 2026-08-22
 
 **当前分支：** `feature/bted-v0.3-dynamic-service`
 
 **当前里程碑：** v0.3.0 已完成架构契约、PostgreSQL schema 骨架、只读 canonical
-release 校验/导入计划，以及基于既有 v0.2 JBrowse bundle 的 47 个参考 contig
-长度/provenance 注册；没有实现真实 PostgreSQL 写库、前端/API/部署。
+release 校验/导入计划、B1 确定性 JSONL 物化，以及基于既有 v0.2 JBrowse bundle 的 47 个
+参考 contig 长度/provenance 注册；B2 writer 已实现并通过离线 fake connection 测试，但
+没有连接真实 PostgreSQL，也没有实现前端/API/部署。
 
 ## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
 
@@ -258,3 +259,55 @@ writer、psycopg、API 或部署。
 字段联合覆盖和 81,477 行计数不变。旧测试中曾允许的 schema 外 `source_annotation`
 asset_kind 已删除。由于 origin 仍是 `planned_not_verified`，所有物化 asset 行的
 `supports_range` 均为 `false`；未来通过 HTTP 206 审计后再由资产注册阶段改为 `true`。
+
+## v0.3 第三阶段 B2 接手说明（2026-08-22）
+
+B2 新增 `backend/importer/postgres.py` 和 `tests/test_bted_v03_postgres.py`，并在
+`scripts/import_bted_v03.py` 增加三个命令：
+
+```bash
+python3 scripts/import_bted_v03.py verify-bundle --bundle-dir /tmp/bted-v03-staging
+python3 scripts/import_bted_v03.py load-postgres --bundle-dir /tmp/bted-v03-staging --confirm-write
+python3 scripts/import_bted_v03.py promote-postgres --bundle-dir /tmp/bted-v03-staging --confirm-promote
+```
+
+第一个命令只做本地 bundle 验证。后两个命令默认不会执行，必须显式确认并从
+`BTED_DATABASE_URL`（或 `--database-url-env` 指定的变量）取得 URL；没有 psycopg3、环境变量
+或确认参数时安全失败，不打印 URL。`requirements-v03.txt` 只声明
+`psycopg[binary]>=3.2,<4`，本轮不安装。
+
+writer 的关键安全边界：
+
+- 事务前流式验证 manifest、SHA256SUMS、每表 checksum/row count、允许/必填字段和自然键
+  闭包；拒绝 bundle 根目录额外文件、目录、符号链接及预期文件 symlink；JSON 拒绝 NaN/
+  Infinity。
+- `assets.origin_url` 必须 HTTPS 且 hostname 与 `origin_host` 一致；
+  `planned_not_verified` 时 `supports_range` 必须为 false，不把计划远端能力当作事实。
+- 事务顺序固定为 release/import → publication/assembly → contig → source → accession/
+  sample → endpoint → annotation → asset → global/per-source count audit；使用 SERIALIZABLE、
+  advisory lock、参数化 SQL、批量 endpoint/annotation，异常 rollback，无 DROP/TRUNCATE/
+  无条件 DELETE。
+- 已有 publication/assembly/contig 只有完整自然键字段兼容时复用；已有 release 整批拒绝。
+  非 published source 不能有 endpoint/sample，S1_002 必须零 endpoint/annotation/JBrowse。
+- `load-postgres` 的目标 release 保持 staged/validated 且 `is_current=false`。promotion
+  还需 bundle 与最新 committed import run 的 `asset_origin_status=verified`，并重复计数审计；
+  当前 v0.2 B1 bundle 是 `planned_not_verified`，不能 promotion。
+
+### B2 验证与下一步
+
+`tests/test_bted_v03_postgres.py` 当前 12/12 通过，涵盖真实 bundle 计数、批量边界、fake
+transaction commit/rollback、自然键兼容/冲突、重复 release、tamper/extra/symlink、origin/
+Range、严格 JSON 和 promotion 拒绝。另需运行：
+
+```bash
+python3 -m unittest discover -s tests -p 'test*.py' -q
+python3 -m unittest -v tests/test_bted_ingestion.py
+python3 scripts/import_bted_v03.py validate --release-root data/public/v0.2.0
+python3 scripts/import_bted_v03.py verify-bundle --bundle-dir /tmp/bted-b1-range-final
+git diff --check
+```
+
+以上离线测试不等同于真实数据库 smoke test。下一步应在隔离 PostgreSQL 实例执行
+`backend/database/schema.sql`，用测试凭据验证完整 load、重复 release 拒绝、已有自然键
+兼容/冲突、事务回滚、global/per-source count audit；在远程资产完成 HTTP 206 审计前不应
+标记 verified 或发布当前 release。不要提交 `/tmp` bundle、FASTA/FAI、数据库 URL 或凭据。

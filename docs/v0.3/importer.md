@@ -1,13 +1,14 @@
-# BTED v0.3 canonical release 校验器
+# BTED v0.3 canonical release 校验器与 PostgreSQL 导入
 
-**状态：** v0.3.0 第二里程碑（只读校验 + 确定性导入计划）  
-**实现：** `backend/importer/canonical.py`  
+**状态：** v0.3.0（A/B1 只读、物化；B2 writer 已实现，待真实数据库 smoke test）
+**实现：** `backend/importer/canonical.py`、`backend/importer/materialize.py`、`backend/importer/postgres.py`
 **入口：** `scripts/import_bted_v03.py`
 
-这一阶段还没有连接 PostgreSQL，也不会把文件写入数据库。校验器只读取一个已经冻结
-的 canonical release，检查将来导入数据库时最容易出错的边界，并输出一个可以复核的
-import plan。数据库仍然只是 canonical release 的派生查询层；校验通过不等同于已经
-部署或已经写入 Neon。
+canonical validator 和 materializer 只读取一个已经冻结的 canonical release，检查将来
+导入数据库时最容易出错的边界，并输出可复核的 import plan/JSONL staging bundle。B2
+writer 只有在显式调用 `load-postgres --confirm-write` 且提供数据库 URL 环境变量时才会
+打开 PostgreSQL 连接；默认命令不会连接数据库。数据库仍然只是 canonical release 的
+派生查询层；校验、离线 fake 测试通过不等同于已经部署或已经写入 Neon。
 
 ## 运行
 
@@ -240,3 +241,82 @@ manifest 篡改、必要文件缺失/未声明、SHA256SUMS 不一致、registry
 PMID 元数据冲突、未声明 checksum 条目、错误 release version 和 CLI plan 输出；不会复制
 整个大型 release，也不会修改仓库内的原始数据。builder 测试还覆盖 tiny FAI、共享
 contig 长度冲突、缺失/额外 contig 和 bundle checksum 失败。
+
+## 第三阶段 B2：PostgreSQL 事务 writer
+
+`backend/importer/postgres.py` 读取 B1 bundle，并在真正写库前重新执行 bundle、checksum、
+JSONL 行数、schema 字段 allowlist 和自然键闭包检查。它不会读取或修改 v0.2 canonical
+目录，也不会下载参考序列或资产。B2 的目标是提供一个可审计的写库边界；当前工作树
+没有 PostgreSQL/psycopg3 服务，因此下面的事务行为只由离线 fake connection 测试验证。
+
+先做纯本地验证：
+
+```bash
+python3 scripts/import_bted_v03.py verify-bundle \
+  --bundle-dir /tmp/bted-v03-staging
+```
+
+验证会拒绝根目录额外文件、目录或符号链接，也拒绝预期文件的符号链接；每个 JSONL
+按流式方式读取，不将 28,399 个 endpoint 或 81,477 个附表行一次性装入内存。`NaN`、
+`Infinity` 等非标准 JSON 数值也会被拒绝。`assets.origin_url` 必须是 HTTPS，且主机名
+必须与 `origin_host` 相同；当 bundle 的 `asset_origin_status=planned_not_verified`
+时，所有资产的 `supports_range` 必须为 `false`。这表示远端对象和 HTTP Range 尚未
+验证，不能把计划 URL 当成已上线服务。
+
+离线 writer 测试入口：
+
+```bash
+python3 -m unittest -q tests/test_bted_v03_postgres.py
+```
+
+正式写库需要显式确认、显式环境变量和 psycopg3：
+
+```bash
+export BTED_DATABASE_URL='postgresql://user:password@host/dbname'
+python3 scripts/import_bted_v03.py load-postgres \
+  --bundle-dir /tmp/bted-v03-staging \
+  --confirm-write \
+  --batch-size 1000
+```
+
+也可以用 `--database-url-env NAME` 指定其它环境变量。URL 只从环境变量读取，不写入
+日志或 bundle；没有 `--confirm-write`、没有环境变量或没有 psycopg3 时命令会安全失败，
+且不会开始事务。项目只声明依赖于 `requirements-v03.txt`，本轮不自动安装依赖。
+
+writer 的事务顺序为：
+
+`release_versions → import_runs → publications/assemblies → contigs → sources →
+source_accessions/samples → endpoints → source_annotations → assets → count audit →
+import_run=committed`
+
+事务开始后设置 `SERIALIZABLE` 和 advisory transaction lock；endpoint/annotation 等大表
+按 `--batch-size` 使用参数化 `executemany`。任何异常都会 rollback，代码不包含
+`DROP`、`TRUNCATE` 或无条件 `DELETE`。同一 `release_version` 已存在时整批拒绝；已有
+publication、assembly 或 contig 只有在自然键对应的全部字段兼容时才复用 identity，冲突
+会失败，不静默更新。写入前和写入后的 count audit 都检查全局表计数，以及每个 source
+的 `sources.record_count == endpoints` 和 source annotation 行数；非 `published_standardized`
+来源不能出现 endpoint/sample 行，S1_002 继续保持零 endpoint/零附表。
+
+`load-postgres` 只会把当前 bundle 作为 staged/validated release 写入，且
+`is_current=false`；`planned_not_verified` 不代表远端资产可发布。独立的 promotion 命令：
+
+```bash
+python3 scripts/import_bted_v03.py promote-postgres \
+  --bundle-dir /tmp/bted-v03-staging \
+  --confirm-promote
+```
+
+promotion 同样需要数据库环境变量，并且只有在 bundle 和最新 committed import run 的
+`asset_origin_status` 都明确为 `verified`、计数审计通过时才允许；当前 v0.2 bundle 是
+`planned_not_verified`，因此 promotion 必须被拒绝。远程资产的存在性和 HTTP 206 Range
+能力需要另行审计并生成新的 verified bundle，不能由 writer 猜测。
+
+### B2 的边界
+
+- `verify-bundle` 是本地文件验证，不是数据库连接测试。
+- fake connection 的 happy path、批量、rollback、自然键复用/冲突和 promotion 拒绝测试
+  通过，不等同于目标 PostgreSQL 版本上的 DDL/权限/网络 smoke test。
+- 真实写库前仍需在隔离 PostgreSQL 实例执行 `schema.sql`，用不含生产凭据的测试 URL
+  运行一次 load、重复 release 拒绝、事务回滚和 count audit，再决定是否接入 API。
+- writer 不发布新的生物学解释；24 列 endpoint、证据类别、来源附表和坐标仍以 canonical
+  release 为准，预测/混合证据不会升级为实验 endpoint。

@@ -728,3 +728,47 @@ PostgreSQL 资源。
   test、事务切换和 API 查询实现。
 - `assets.origin_url` 仅是 HTTPS 计划 URL；远程 origin 是否存在、Range 是否可用尚未验证。
 - `genes` 与 `endpoint_gene_context` 仍为零行；参考 FASTA/FAI 不复制进 Git 或当前 bundle。
+
+## 2026-08-22 —— v0.3 第三阶段 B2：PostgreSQL 事务 writer
+
+**分支：** `feature/bted-v0.3-dynamic-service`
+**状态：** 已实现离线可审计 writer，待主代理审查；未提交、未推送、未连接真实数据库
+
+### 完成内容
+
+1. 新增 `backend/importer/postgres.py`：提供 `verify_bundle`、`load_bundle`、
+   `promote_bundle` 和环境变量连接辅助。验证阶段流式读取 13 个 JSONL 表，检查 release/
+   schema/version、SHA256SUMS、表 checksum/byte size/row count、严格字段 allowlist、自然
+   键和外键闭包；未知字段、缺失字段、非有限 JSON 数值、额外文件/目录/符号链接都会失败。
+2. writer 只接受 HTTPS origin，核对 `origin_host`；`planned_not_verified` 时强制所有
+   `supports_range=false`。S1_002 和其它非 published source 的 endpoint/sample/annotation
+   边界在 preflight 中统一检查，endpoint 位置必须不超过已核实 contig length，且 assembly/
+   contig 不能错配。
+3. 事务按 release/import run → publication/assembly → contig → source → accession/sample
+   → endpoint → annotation → asset → count audit 顺序执行，设置 SERIALIZABLE 和 advisory
+   transaction lock，endpoint/annotation 默认每 1,000 行批量写入；异常 rollback，未使用
+   `DROP`、`TRUNCATE` 或无条件 `DELETE`。同一 release 拒绝重复导入，已有 publication/
+   assembly/contig 仅在全部自然键字段兼容时复用。
+4. 增加每 source 的 endpoint `record_count`、annotation 行数审计，并让 promotion 复用同
+   一审计。`load-postgres` 只生成 staged/validated、`is_current=false` 的 release；
+   `promote-postgres` 要求 bundle 与最新 committed run 均明确 `asset_origin_status=verified`。
+5. CLI 增加 `verify-bundle`、`load-postgres --confirm-write` 和
+   `promote-postgres --confirm-promote`；URL 只从显式环境变量读取且不打印。新增
+   `requirements-v03.txt`，声明 psycopg3 但本轮未安装。
+
+### 验证
+
+- `python3 -m unittest -q tests/test_bted_v03_postgres.py`：12/12 PASS。
+- 覆盖真实 B1 bundle 的 22/21/28,399/81,477/127 行数、批量边界、自然键复用/冲突、
+  rollback、重复 release、planned origin promotion 拒绝、额外文件/目录/符号链接、
+  checksum/row count、origin host/Range 和严格 JSON 检查。
+- 真实 `verify-bundle --bundle-dir /tmp/bted-b1-range-final`：通过；release `v0.2.0`，
+  origin 状态 `planned_not_verified`。
+
+### 未完成/边界
+
+- 当前没有 psycopg3、PostgreSQL 服务或目标环境 DDL smoke test；fake connection 通过不
+  等同于真实数据库写入成功。接入前需在隔离数据库执行 schema、load、重复 release 拒绝、
+  rollback 和 count audit。
+- 未修改 v0.2 canonical release、网站或参考 FASTA/FAI；没有下载或发布远程资产。当前
+  127 个 asset 仍是计划 origin，不能 promotion。

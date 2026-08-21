@@ -127,3 +127,30 @@ JSONL 保留 schema 对应字段，并额外提供 `source_id_ref`、`assembly_i
 
 物化输出是可审计中间层，不是 PostgreSQL 快照，不表示已经执行 INSERT。真正 writer 仍
 需在新 release 的 staging schema 中按外键顺序插入，并在单事务中切换发布状态。
+
+## B2 PostgreSQL writer（离线实现，未做真实 DB smoke test）
+
+`backend/importer/postgres.py` 是 B1 JSONL bundle 到 PostgreSQL 的事务写入边界。它先
+流式验证 bundle 根目录、SHA256SUMS、表文件 checksum/行数、物理列 allowlist、自然键
+和外键闭包，再打开事务。`verify-bundle` 始终是纯本地命令；`load-postgres` 只有同时
+提供 `--confirm-write` 和显式数据库 URL 环境变量时才会尝试导入 psycopg3。URL 不写入
+日志、测试输出或 bundle。依赖声明见仓库根目录的 `requirements-v03.txt`，本轮不自动
+安装依赖。
+
+写入顺序固定为 release/import run、publication/assembly、contig、source、accession/
+sample、endpoint、source annotation、asset，最后做全局及逐 source 计数审计并把 run
+标为 `committed`。事务使用 `SERIALIZABLE` 和 advisory transaction lock，批量行使用
+参数化 SQL；任何错误 rollback，代码不使用 `DROP`、`TRUNCATE` 或无条件 `DELETE`。已有
+publication/assembly/contig 只有自然键对应字段全部兼容时才复用，不做静默 UPDATE；已有
+release 则拒绝整批导入。
+
+B1 的 `planned_not_verified` origin 可以进入 staged/validated、`is_current=false` 的
+release，但不能 promotion。`promote-postgres` 还要求 bundle 与最新 committed run 的
+`asset_origin_status=verified`，并再次通过全局和逐 source endpoint/annotation 计数审计。
+在远端对象完成 HTTP 206/Range 审计前，`supports_range=false` 不是已验证的远端能力。
+
+目前 writer 只由离线 fake connection 覆盖 happy path、批量、回滚、自然键冲突和 promotion
+拒绝；这不等同于目标 PostgreSQL 版本上的 DDL、权限、连接和网络 smoke test。真正接入 API
+前，应在隔离 PostgreSQL 实例执行 `schema.sql` 并用测试凭据验证一次完整 load/重复 release
+拒绝/回滚/count audit。writer 只搬运 canonical release 的已确认数据，不新增生物学解释，
+也不把预测或混合证据提升为实验 endpoint。
