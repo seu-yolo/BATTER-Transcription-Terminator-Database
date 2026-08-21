@@ -916,3 +916,39 @@ release/site、不连接真实数据库、不提交推送。
 - 尚未在真实 PostgreSQL 或真实 JBrowse 浏览器中 smoke test；当前 v0.2 B1 小型 canonical
   assets 尚未包含浏览器参考/信号资产，因此实际数据入库需下一阶段补齐并重新物化，不在本轮
   猜测生成 FASTA/GFF3/BigWig。
+
+## 2026-08-22 —— v0.3 第三阶段 D3：浏览器资产 inventory 接入 materializer
+
+**范围：** 只读取 tracked `data/registry/jbrowse_assets.v0.2.0.tsv` 并生成 PostgreSQL
+写库前 staging 行；没有上传对象、连接数据库、修改 v0.2 canonical release 或声明远端
+URL 已可访问。
+
+### 完成内容
+
+1. `scripts/build_v03_jbrowse_asset_inventory.py` 从既有 v0.2 JBrowse bundle 的配置、
+   `SHA256SUMS.txt` 与 canonical endpoint BED 生成 tracked TSV/JSON inventory。最初按
+   20 个 published assembly、109 行估算；核对 registry 和 checksum 后确认 21 个
+   published source 实际对应 19 个唯一 assembly：`BATTER_S1_007`/`BATTER_S1_013`
+   共享 `GCF_000739105.1`，`BATTER_S1_015`/`BATTER_S1_017` 共享
+   `GCF_005519465.1`。共享参考资产按 checksum 一致性去重，因此最终为 105 行。
+2. `materialize` 增加显式 `--jbrowse-asset-inventory`；未提供时保持原 127 个 canonical
+   小型资产。提供当前 105 行 inventory 时，21 个 canonical BED 按相同 logical path
+   替换旧行，再加入 76 个 assembly-scoped reference asset 和 8 个 source-scoped raw
+   BigWig，最终为 211 行。
+3. inventory 与 release version、21 个 published source、19 个 published assembly、
+   canonical BED checksum/size 和 source/assembly 关系交叉核对。S1_002 不允许出现浏览器
+   资产；reference asset 写 `assembly_id_ref`，BED/BigWig 写 `source_id_ref`。
+4. browser asset 的计划 origin 使用安全 `object_path` 并保留目录斜杠；所有
+   `supports_range=false`。核验后将 28 个 `external_link_only` 对象明确设为
+   `is_public=false`。manifest 记录 inventory 相对路径、SHA-256、105/21/76/8 统计和
+   `planned_not_verified` 状态。
+
+### 验证与限制
+
+- focused inventory materialization：4/4 PASS；主代理使用含 FastAPI 依赖的
+  `/private/tmp/bted-v03-api-venv` 运行全量 `unittest discover`：107/107 PASS、无 skip
+  （仅有 Starlette `TestClient` deprecation warning）；ingestion 回归 4/4 PASS。真实
+  bundle 为 211 assets，PostgreSQL `verify_bundle()` 通过。
+- 既有无参数 127-asset 回归继续由 importer/postgres 测试覆盖。
+- 对象尚未上传，也未做 HTTP 206、真实 PostgreSQL 或真实 JBrowse smoke test；当前清单
+  只是确定性 inventory/import 中间层。

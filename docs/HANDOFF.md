@@ -400,3 +400,24 @@ JBrowse link，frontend 显示 `Open JBrowse`。
 `unittest discover` 均为 98/98 PASS（仅有 Starlette deprecation warning），Next build 也通过。
 未进行真实 PostgreSQL/远端资产/JBrowse 浏览器 smoke test。当前 v0.2 B1 canonical 资产仍不含参考/信号
 浏览器对象，后续需单独登记这些资产后才会在真实 assembly 上生成可打开配置。
+
+## D3 浏览器资产物化接手说明（2026-08-22）
+
+`scripts/build_v03_jbrowse_asset_inventory.py` 已从既有 v0.2 JBrowse bundle 与 canonical
+endpoint BED 生成 tracked TSV/JSON inventory。最初按 20 个 published assembly、109 行
+估算；registry/checksum 核验确认 21 个 published source 对应 19 个唯一 assembly：
+`BATTER_S1_007`/`BATTER_S1_013` 共享 `GCF_000739105.1`，
+`BATTER_S1_015`/`BATTER_S1_017` 共享 `GCF_005519465.1`。共享参考资产去重后，清单为
+76 个 reference asset、21 个 canonical BED 和 8 个 raw BigWig，共 105 行。
+
+`materialize` 现支持显式 `--jbrowse-asset-inventory
+data/registry/jbrowse_assets.v0.2.0.tsv`。不传参数仍是 127 个 canonical 小型资产；传入
+当前 105 行清单后，21 个 endpoint BED 替换同 logical path 的旧行，76 个参考资产按
+19 个 assembly 关联，8 个 raw BigWig 按 4 个 source 关联，最终 `assets.jsonl` 为 211 行。
+
+origin URL 使用 inventory 的 `object_path`，但状态仍是 `planned_not_verified`，所有 Range
+能力为 false。28 个 `external_link_only` 对象均已明确设为 `is_public=false`，S1_002 无
+浏览器资产。focused 4/4、ingestion 4/4 PASS；主代理使用含 FastAPI 依赖的
+`/private/tmp/bted-v03-api-venv` 完成全量 107/107 PASS、无 skip（仅有 Starlette
+`TestClient` deprecation warning）。211-asset bundle 已通过离线 `verify_bundle()`。
+尚未上传资产或完成远端/数据库/JBrowse smoke test。

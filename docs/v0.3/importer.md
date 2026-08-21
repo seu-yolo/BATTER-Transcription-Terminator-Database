@@ -183,6 +183,30 @@ python3 scripts/import_bted_v03.py materialize \
   --generated-at-utc 2026-08-21T00:00:00Z
 ```
 
+默认不接入大型浏览器对象，继续生成 127 个 canonical 小型资产。需要把已经审计的
+JBrowse 资产清单纳入同一个 staging bundle 时，必须显式传入 tracked inventory：
+
+```bash
+python3 scripts/import_bted_v03.py materialize \
+  --release-root data/public/v0.2.0 \
+  --output-dir /tmp/bted-v03-staging-with-browser \
+  --asset-origin-base https://example.test/assets \
+  --generated-at-utc 2026-08-21T00:00:00Z \
+  --jbrowse-asset-inventory data/registry/jbrowse_assets.v0.2.0.tsv
+```
+
+当前 inventory 有 105 行：19 个 published assembly 的 76 个去重 FASTA/FAI/GFF3/TBI、
+21 个 canonical `records/<source>/endpoints.bed` 和 4 个 Rend-seq 来源的 8 个 raw
+forward/reverse BigWig。21 个 BED 使用相同 `logical_path` 替换原 canonical asset 行，
+不会重复计数，因此最终 `assets.jsonl` 为 `127 - 21 + 105 = 211` 行。参考资产只关联
+assembly；BED/BigWig 只关联 source；S1_002 不产生浏览器资产。
+
+inventory 的 `object_path` 被用作计划 origin 路径，目录层级会保留；它不会被替换成
+单段 asset ID。当前对象尚未上传，manifest 仍记录
+`asset_origin_status=planned_not_verified`，所有资产 `supports_range=false`。TSV 中
+`external_link_only` 行必须 `is_public=false`；这一步只准备可审计写库行，不表示 URL
+已经存在或 JBrowse 已可打开。
+
 `--output-dir` 和 `--asset-origin-base` 都必须显式给出；非空目录拒绝覆盖。origin 只
 是未来服务层的 HTTPS 计划前缀，bundle 把状态写为 `planned_not_verified`，不表示远程
 对象已经存在或可访问。物化行的 `supports_range` 默认是 `false`；只有未来对象上传后
@@ -190,7 +214,7 @@ python3 scripts/import_bted_v03.py materialize \
 `--generated-at-utc` 可得到相同内容和 SHA-256。
 
 输出目录包含每张表一个 JSONL、`manifest.json` 和 `SHA256SUMS.txt`。当前真实 v0.2.0
-物化行数为：`release_versions` 1、`import_runs` 1、`publications` 13、`assemblies` 20、
+未传入浏览器 inventory 时，物化行数为：`release_versions` 1、`import_runs` 1、`publications` 13、`assemblies` 20、
 `contigs` 47、`sources` 22、`source_accessions` 32、`samples` 21、`endpoints` 28,399、
 `source_annotations` 81,477、`genes` 0、`endpoint_gene_context` 0、`assets` 127。
 附表的 81,477 行来自按字段证据角色分组后的行：每个原始附表行可以产生多个

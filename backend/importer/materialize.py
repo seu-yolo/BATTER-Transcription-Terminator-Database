@@ -69,6 +69,39 @@ INTEGER_ENDPOINT_COLUMNS = {
     "bed_end_0based",
 }
 SOURCE_STATUS_PUBLISHED = {"published_standardized", "published"}
+JBROWSE_INVENTORY_COLUMNS = (
+    "asset_id",
+    "release_version",
+    "source_id",
+    "assembly_accession",
+    "asset_role",
+    "asset_kind",
+    "bundle_path",
+    "canonical_path",
+    "object_path",
+    "byte_size",
+    "sha256",
+    "mime_type",
+    "supports_range",
+    "redistribution_status",
+    "is_public",
+)
+JBROWSE_REFERENCE_ROLES = {
+    "reference_fasta": "fasta",
+    "reference_fai": "fai",
+    "reference_gff3": "gff3",
+    "reference_tbi": "tbi",
+}
+JBROWSE_SIGNAL_ROLES = {
+    "raw_bigwig_forward",
+    "raw_bigwig_reverse",
+}
+JBROWSE_RAW_SIGNAL_SOURCES = {
+    "BATTER_S1_001",
+    "BATTER_S1_003",
+    "BATTER_S1_004",
+    "BATTER_S1_005",
+}
 
 
 class MaterializationError(RuntimeError):
@@ -257,6 +290,192 @@ def _mime_type(logical_path: str, asset_kind: str) -> str:
 def _asset_origin(base: str, asset_id: str) -> str:
     # asset_id is already a single path segment by canonical validation.
     return f"{base}/{quote(asset_id, safe="-._~")}"  # noqa: E501
+
+
+def _asset_origin_path(base: str, object_path: str) -> str:
+    """Return a planned object URL while preserving path separators."""
+
+    return f"{base}/{quote(object_path, safe='/-._~')}"
+
+
+def _tsv_bool(value: Any, field: str) -> bool:
+    text = str(value).strip().lower()
+    if text == "true":
+        return True
+    if text == "false":
+        return False
+    raise MaterializationError(f"{field} must be true/false")
+
+
+def _portable_inventory_path(path: Path, repo_root: Path) -> str:
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _merge_jbrowse_asset_inventory(
+    tables: dict[str, list[dict[str, Any]]],
+    snapshot: Mapping[str, Any],
+    inventory_path: Path,
+    asset_origin_base: str,
+) -> dict[str, Any]:
+    """Replace canonical BED assets and add the tracked browser inventory."""
+
+    try:
+        with inventory_path.open(encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            if tuple(reader.fieldnames or ()) != JBROWSE_INVENTORY_COLUMNS:
+                raise MaterializationError("JBrowse asset inventory header does not match schema")
+            inventory_rows = list(reader)
+    except (OSError, UnicodeError, csv.Error) as exc:
+        raise MaterializationError(f"cannot read JBrowse asset inventory: {inventory_path}") from exc
+    if len(inventory_rows) != 105:
+        raise MaterializationError("JBrowse asset inventory must contain 105 v0.2.0 rows")
+
+    release_version = str(snapshot["release"].get("release_version", ""))
+    source_manifests = snapshot.get("source_manifests", {})
+    release_sources = snapshot["release"].get("sources", {})
+    published_sources = {
+        str(source_id)
+        for source_id, entry in release_sources.items()
+        if str(entry.get("release_status", "")) in SOURCE_STATUS_PUBLISHED
+    }
+    source_assemblies = {
+        source_id: str(source_manifests[source_id].get("reference_genome", ""))
+        for source_id in published_sources
+    }
+    published_assemblies = set(source_assemblies.values())
+
+    inventory_assets: list[dict[str, Any]] = []
+    endpoint_sources: set[str] = set()
+    reference_keys: set[tuple[str, str]] = set()
+    signal_keys: set[tuple[str, str]] = set()
+    seen_asset_ids: set[str] = set()
+    seen_paths: set[str] = set()
+    for number, raw in enumerate(inventory_rows, start=2):
+        asset_id = str(raw["asset_id"]).strip()
+        source_id = str(raw["source_id"]).strip()
+        assembly = str(raw["assembly_accession"]).strip()
+        role = str(raw["asset_role"]).strip()
+        kind = str(raw["asset_kind"]).strip()
+        object_path = str(raw["object_path"]).strip()
+        if str(raw["release_version"]).strip() != release_version:
+            raise MaterializationError(f"JBrowse inventory line {number}: release_version mismatch")
+        if not asset_id or "/" in asset_id or asset_id in seen_asset_ids:
+            raise MaterializationError(f"JBrowse inventory line {number}: invalid/duplicate asset_id")
+        path_value = Path(object_path)
+        if not object_path or path_value.is_absolute() or ".." in path_value.parts or object_path in seen_paths:
+            raise MaterializationError(f"JBrowse inventory line {number}: invalid/duplicate object_path")
+        if source_id not in published_sources or assembly != source_assemblies.get(source_id):
+            raise MaterializationError(f"JBrowse inventory line {number}: source/assembly mismatch")
+        if source_id == "BATTER_S1_002":
+            raise MaterializationError("S1_002 must not have JBrowse inventory assets")
+        if assembly not in published_assemblies:
+            raise MaterializationError(f"JBrowse inventory line {number}: unknown assembly")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(raw["sha256"]).strip()):
+            raise MaterializationError(f"JBrowse inventory line {number}: invalid SHA-256")
+        byte_size = _int(raw["byte_size"], f"JBrowse inventory line {number} byte_size")
+        if byte_size < 0:
+            raise MaterializationError(f"JBrowse inventory line {number}: negative byte_size")
+        supports_range = _tsv_bool(raw["supports_range"], f"line {number} supports_range")
+        is_public = _tsv_bool(raw["is_public"], f"line {number} is_public")
+        redistribution = str(raw["redistribution_status"]).strip()
+        if supports_range:
+            raise MaterializationError("planned JBrowse inventory cannot claim Range support")
+        if redistribution == "external_link_only" and is_public:
+            raise MaterializationError("external_link_only JBrowse asset cannot be public")
+
+        if role == "canonical_endpoints":
+            if kind != "bed" or str(raw["canonical_path"]).strip() != object_path:
+                raise MaterializationError(f"JBrowse inventory line {number}: invalid canonical BED")
+            canonical = Path(str(snapshot["release_root"])) / object_path
+            if not canonical.is_file() or sha256_file(canonical) != str(raw["sha256"]).strip():
+                raise MaterializationError(f"JBrowse inventory line {number}: canonical BED checksum mismatch")
+            if canonical.stat().st_size != byte_size:
+                raise MaterializationError(f"JBrowse inventory line {number}: canonical BED size mismatch")
+            endpoint_sources.add(source_id)
+            source_ref: str | None = source_id
+            assembly_ref: str | None = None
+        elif role in JBROWSE_REFERENCE_ROLES:
+            if kind != JBROWSE_REFERENCE_ROLES[role] or str(raw["canonical_path"]).strip():
+                raise MaterializationError(f"JBrowse inventory line {number}: invalid reference asset")
+            reference_keys.add((assembly, role))
+            source_ref = None
+            assembly_ref = assembly
+        elif role in JBROWSE_SIGNAL_ROLES:
+            if kind != "bigwig" or str(raw["canonical_path"]).strip():
+                raise MaterializationError(f"JBrowse inventory line {number}: invalid raw signal asset")
+            searchable = " ".join((str(raw["bundle_path"]), object_path)).lower()
+            if any(token in searchable for token in ("signed", "log10", "normalized")):
+                raise MaterializationError(f"JBrowse inventory line {number}: derived signal is not raw")
+            signal_keys.add((source_id, role))
+            source_ref = source_id
+            assembly_ref = None
+        else:
+            raise MaterializationError(f"JBrowse inventory line {number}: unsupported asset_role")
+
+        origin_url = _asset_origin_path(asset_origin_base, object_path)
+        inventory_assets.append(
+            {
+                "asset_id": asset_id,
+                "release_version": release_version,
+                "source_id_ref": source_ref,
+                "assembly_id_ref": assembly_ref,
+                "asset_kind": kind,
+                "logical_path": object_path,
+                "origin_url": origin_url,
+                "origin_host": urlparse(origin_url).hostname,
+                "byte_size": byte_size,
+                "sha256": str(raw["sha256"]).strip(),
+                "mime_type": str(raw["mime_type"]).strip(),
+                "supports_range": supports_range,
+                "redistribution_status": redistribution,
+                "is_public": is_public,
+            }
+        )
+        seen_asset_ids.add(asset_id)
+        seen_paths.add(object_path)
+
+    if endpoint_sources != published_sources:
+        raise MaterializationError("JBrowse inventory canonical BED source set mismatch")
+    expected_reference_keys = {
+        (assembly, role)
+        for assembly in published_assemblies
+        for role in JBROWSE_REFERENCE_ROLES
+    }
+    if reference_keys != expected_reference_keys:
+        raise MaterializationError("JBrowse inventory reference assembly/role set mismatch")
+    expected_signal_keys = {
+        (source_id, role)
+        for source_id in JBROWSE_RAW_SIGNAL_SOURCES
+        for role in JBROWSE_SIGNAL_ROLES
+    }
+    if signal_keys != expected_signal_keys:
+        raise MaterializationError("JBrowse inventory raw signal source/strand set mismatch")
+
+    canonical_bed_paths = {f"records/{source_id}/endpoints.bed" for source_id in published_sources}
+    base_assets = [
+        row for row in tables["assets"] if str(row["logical_path"]) not in canonical_bed_paths
+    ]
+    if len(tables["assets"]) - len(base_assets) != len(published_sources):
+        raise MaterializationError("canonical BED replacement set is incomplete")
+    combined = sorted([*base_assets, *inventory_assets], key=lambda row: row["asset_id"])
+    if len({row["asset_id"] for row in combined}) != len(combined):
+        raise MaterializationError("merged asset_id values are not unique")
+    if len({row["logical_path"] for row in combined}) != len(combined):
+        raise MaterializationError("merged asset logical_path values are not unique")
+    tables["assets"] = combined
+    return {
+        "path": _portable_inventory_path(inventory_path, Path(str(snapshot["repo_root"]))),
+        "sha256": sha256_file(inventory_path),
+        "row_count": len(inventory_rows),
+        "canonical_bed_replacements": len(published_sources),
+        "reference_asset_count": len(reference_keys),
+        "raw_signal_asset_count": len(signal_keys),
+        "materialized_asset_count": len(combined),
+        "asset_origin_status": "planned_not_verified",
+    }
 
 
 def _load_field_roles(path: Path) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
@@ -904,6 +1123,7 @@ def materialize_release(
     output_dir: str | Path,
     asset_origin_base: str,
     generated_at_utc: str | None = None,
+    jbrowse_asset_inventory: str | Path | None = None,
 ) -> MaterializationResult:
     """Validate and materialize a release into a deterministic JSONL bundle.
 
@@ -934,18 +1154,32 @@ def materialize_release(
     except (RuntimeError, ValueError) as exc:
         raise MaterializationError(str(exc)) from exc
     tables = _build_tables(snapshot, origin_base, generated_at)
+    canonical_asset_count = len(tables["assets"])
+    inventory_summary: dict[str, Any] | None = None
+    if jbrowse_asset_inventory is not None:
+        candidate = Path(jbrowse_asset_inventory).expanduser()
+        if not candidate.is_absolute():
+            candidate = Path(str(snapshot["repo_root"])) / candidate
+        inventory_summary = _merge_jbrowse_asset_inventory(
+            tables,
+            snapshot,
+            candidate.resolve(),
+            origin_base,
+        )
     # Explicit row-count/closure assertions catch a malformed future release
     # before any bundle bytes are exposed.
     source_ids = snapshot["source_ids"]
     expected_sources = int(report.summary.get("source_count", len(source_ids)))
     expected_endpoints = int(report.summary.get("published_record_count", len(tables["endpoints"])))
-    expected_assets = int(report.plan.get("tables", {}).get("assets", {}).get("row_count", len(tables["assets"])))
+    expected_assets = int(report.plan.get("tables", {}).get("assets", {}).get("row_count", canonical_asset_count))
     if len(source_ids) != expected_sources:
         raise MaterializationError(f"source count changed between validation and materialization: {len(source_ids)} != {expected_sources}")
     if len(tables["endpoints"]) != expected_endpoints:
         raise MaterializationError(f"endpoint count changed between validation and materialization: {len(tables['endpoints'])} != {expected_endpoints}")
-    if len(tables["assets"]) != expected_assets:
-        raise MaterializationError(f"asset count changed between validation and materialization: {len(tables['assets'])} != {expected_assets}")
+    if canonical_asset_count != expected_assets:
+        raise MaterializationError(f"canonical asset count changed between validation and materialization: {canonical_asset_count} != {expected_assets}")
+    if inventory_summary is not None and len(tables["assets"]) != int(inventory_summary["materialized_asset_count"]):
+        raise MaterializationError("JBrowse inventory materialized asset count mismatch")
     if any(row["source_id_ref"] == "BATTER_S1_002" for row in tables["endpoints"]):
         raise MaterializationError("S1_002 must not produce endpoint rows")
     if any(row["source_id_ref"] == "BATTER_S1_002" for row in tables["source_annotations"]):
@@ -997,6 +1231,8 @@ def materialize_release(
             row["source_id"] for row in tables["sources"] if row["release_status"] == "audit_only"
         ],
     }
+    if inventory_summary is not None:
+        manifest["jbrowse_asset_inventory"] = inventory_summary
     final_manifest = _atomic_write_bundle(output_path, tables, manifest)
     return MaterializationResult(output_path, final_manifest)
 

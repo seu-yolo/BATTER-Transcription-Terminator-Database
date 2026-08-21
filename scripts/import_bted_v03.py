@@ -109,6 +109,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="fixed ISO-8601 timestamp for reproducible output (default: current UTC time)",
     )
+    materialize.add_argument(
+        "--jbrowse-asset-inventory",
+        default=None,
+        help=(
+            "tracked browser asset TSV to merge into assets.jsonl; omitted by default "
+            "to preserve the canonical 127-asset bundle"
+        ),
+    )
     verify = subparsers.add_parser(
         "verify-bundle",
         help="只读验证 B1 JSONL bundle，不连接数据库",
@@ -161,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_dir=args.output_dir,
                 asset_origin_base=args.asset_origin_base,
                 generated_at_utc=args.generated_at_utc,
+                jbrowse_asset_inventory=args.jbrowse_asset_inventory,
             )
         except MaterializationError as exc:
             json.dump({"ok": False, "error": str(exc)}, sys.stderr, ensure_ascii=False)
