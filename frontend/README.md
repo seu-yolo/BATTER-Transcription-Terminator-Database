@@ -15,6 +15,8 @@ read API remain the source of truth.
   independent source tracks kept separate.
 - `/explore` — server-side endpoint filters and pagination.
 - `/endpoints/[endId]` — the original 24-column endpoint record and context.
+- `/genes/[geneId]` — gene identity, reference interval, related endpoint count,
+  and assembly/JBrowse links around the gene.
 - `/augmentation` — source-level BATTER augmentation metadata; this does not
   change the experimental evidence class.
 

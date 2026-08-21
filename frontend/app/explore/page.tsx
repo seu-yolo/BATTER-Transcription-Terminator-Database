@@ -3,13 +3,13 @@ import { getEndpoints, ApiClientError } from "@/lib/api";
 import { EmptyState, ErrorState, PageIntro, ReleaseNote, StatusBadge } from "@/components/PageFrame";
 import { Pagination } from "@/components/Pagination";
 
-type ExploreParams = { page?: string; source_id?: string; assembly_accession?: string; contig_accession?: string; strand?: string; evidence_class?: string; position_min?: string; position_max?: string };
+type ExploreParams = { page?: string; source_id?: string; assembly_accession?: string; contig_accession?: string; gene_or_locus?: string; strand?: string; evidence_class?: string; position_min?: string; position_max?: string };
 
 export default async function ExplorePage({ searchParams }: { searchParams?: ExploreParams }) {
   const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
   const params = {
     page, page_size: 25, source_id: searchParams?.source_id, assembly_accession: searchParams?.assembly_accession,
-    contig_accession: searchParams?.contig_accession, strand: searchParams?.strand, evidence_class: searchParams?.evidence_class,
+    contig_accession: searchParams?.contig_accession, gene_or_locus: searchParams?.gene_or_locus, strand: searchParams?.strand, evidence_class: searchParams?.evidence_class,
     position_min: searchParams?.position_min ? Number(searchParams.position_min) : undefined,
     position_max: searchParams?.position_max ? Number(searchParams.position_max) : undefined,
   };
@@ -27,6 +27,7 @@ export default async function ExplorePage({ searchParams }: { searchParams?: Exp
         <div><label htmlFor="source_id">Source</label><input id="source_id" name="source_id" defaultValue={searchParams?.source_id} placeholder="BATTER_S1_007" /></div>
         <div><label htmlFor="assembly_accession">Assembly</label><input id="assembly_accession" name="assembly_accession" defaultValue={searchParams?.assembly_accession} placeholder="GCF_..." /></div>
         <div><label htmlFor="contig_accession">Contig</label><input id="contig_accession" name="contig_accession" defaultValue={searchParams?.contig_accession} placeholder="CP..." /></div>
+        <div><label htmlFor="gene_or_locus">Gene / locus</label><input id="gene_or_locus" name="gene_or_locus" defaultValue={searchParams?.gene_or_locus} placeholder="locus tag" /></div>
         <div><label htmlFor="strand">Strand</label><select id="strand" name="strand" defaultValue={searchParams?.strand ?? ""}><option value="">Both strands</option><option value="+">+ plus</option><option value="-">− minus</option></select></div>
         <div><label htmlFor="evidence_class">Evidence</label><select id="evidence_class" name="evidence_class" defaultValue={searchParams?.evidence_class ?? ""}><option value="">All public evidence</option><option value="author_called_endpoint">Author-called endpoint</option><option value="curated_record">Curated record</option><option value="observed_signal">Observed signal</option><option value="called_endpoint">Called endpoint</option></select></div>
         <div><label>&nbsp;</label><button className="button primary" type="submit">Filter records</button></div>

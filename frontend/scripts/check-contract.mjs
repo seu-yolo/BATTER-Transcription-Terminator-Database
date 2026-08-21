@@ -14,6 +14,7 @@ const requiredFiles = [
   "app/assemblies/page.tsx",
   "app/assemblies/[assemblyId]/page.tsx",
   "app/endpoints/[endId]/page.tsx",
+  "app/genes/[geneId]/page.tsx",
   "app/augmentation/page.tsx",
   "app/explore/page.tsx",
 ];
@@ -30,6 +31,7 @@ const api = read("lib/api.ts");
 const config = read("next.config.mjs");
 const source = read("app/sources/[sourceId]/page.tsx");
 const explore = read("app/explore/page.tsx");
+const gene = read("app/genes/[geneId]/page.tsx");
 const assertions = [
   [home, "getStats", "home loads dynamic release statistics"],
   [home, "Search by accession", "home has accession search entry"],
@@ -42,6 +44,10 @@ const assertions = [
   [source, "Download endpoint table", "source download entry exists"],
   [explore, "Filter records", "endpoint filters are server-side"],
   [explore, "Assembly view", "endpoint context entry exists"],
+  [api, "getGene", "API wrapper includes gene detail"],
+  [gene, "getGene", "gene detail page loads gene"],
+  [gene, "±500 bp", "gene page provides a flanked JBrowse window"],
+  [gene, "/assemblies/", "gene page links to assembly context"],
 ];
 for (const [content, needle, description] of assertions) {
   if (needle === "localhost" ? content.includes(needle) : !content.includes(needle)) {
