@@ -94,7 +94,7 @@
     "BATTER_S1_022"
   ],
   "supports_range": false,
-  "tsv_byte_size": 33645,
+  "tsv_byte_size": 33673,
   "tsv_path": "data/registry/jbrowse_assets.v0.2.0.tsv",
-  "tsv_sha256": "3c27a048258190878a443a0444f0a0a39efd1b287805236f30b57995931bba6b"
+  "tsv_sha256": "3e00e34ade383fc53b01ced58fbc0c5f74bcdeddb080c913274c7d8cabe68276"
 }

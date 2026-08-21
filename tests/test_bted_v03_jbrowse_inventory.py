@@ -74,6 +74,10 @@ class TestJBrowseAssetInventory(unittest.TestCase):
             self.assertEqual(int(row["byte_size"]), path.stat().st_size)
             self.assertEqual(row["sha256"], _sha256(path))
             self.assertEqual(row["supports_range"], "false")
+            self.assertEqual(
+                row["is_public"],
+                "true" if row["redistribution_status"] == "verified_redistributable" else "false",
+            )
 
     def test_shared_reference_is_deduplicated_and_excluded_assets_stay_out(self) -> None:
         assembly_rows = [row for row in self.rows if row["asset_kind"] in {"fasta", "fai", "gff3", "tbi"}]

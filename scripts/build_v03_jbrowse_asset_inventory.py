@@ -142,7 +142,7 @@ def _make_row(
     bundle_path: str = "",
     canonical_path: str = "",
     redistribution_status: str,
-    is_public: bool = True,
+    is_public: bool | None = None,
 ) -> dict[str, str]:
     if not path.is_file():
         raise FileNotFoundError(path)
@@ -157,6 +157,11 @@ def _make_row(
         mime_type = "application/octet-stream"
     else:
         raise ValueError(f"unsupported asset kind: {asset_kind}")
+    public = (
+        redistribution_status == "verified_redistributable"
+        if is_public is None
+        else is_public
+    )
     digest = sha256(path)
     return {
         "asset_id": asset_id,
@@ -173,7 +178,7 @@ def _make_row(
         "mime_type": mime_type,
         "supports_range": "false",
         "redistribution_status": redistribution_status,
-        "is_public": "true" if is_public else "false",
+        "is_public": "true" if public else "false",
     }
 
 
