@@ -18,6 +18,8 @@ def create_app(
     repository: ReadRepository | Callable[[], ReadRepository] | None = None,
     *,
     jbrowse_base: str = "/jbrowse/",
+    asset_client: Any | None = None,
+    asset_client_factory: Callable[[], Any] | None = None,
 ) -> Any:
     """Create the API app with an injectable repository or repository factory.
 
@@ -27,7 +29,7 @@ def create_app(
     """
 
     try:
-        from fastapi import Depends, FastAPI, Query, Request
+        from fastapi import Depends, FastAPI, Header, Query, Request
         from fastapi.exceptions import RequestValidationError
         from fastapi.responses import JSONResponse, StreamingResponse
     except ImportError as exc:  # pragma: no cover - exercised when optional deps are absent
@@ -47,11 +49,16 @@ def create_app(
         return repository
 
     def get_service() -> ReadService:
-        return ReadService(get_repository(), jbrowse_base=jbrowse_base)
+        return ReadService(
+            get_repository(),
+            jbrowse_base=jbrowse_base,
+            asset_client=asset_client,
+            asset_client_factory=asset_client_factory,
+        )
 
     @app.exception_handler(ApiError)
     async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
-        return JSONResponse(status_code=exc.status_code, content=exc.as_dict())
+        return JSONResponse(status_code=exc.status_code, content=exc.as_dict(), headers=dict(exc.headers or {}))
 
     @app.exception_handler(RepositoryUnavailable)
     async def repository_error_handler(_: Request, exc: RepositoryUnavailable) -> JSONResponse:
@@ -273,5 +280,57 @@ def create_app(
             include_annotations=include_annotations,
         )
         return StreamingResponse(stream.body, media_type=stream.media_type, headers=stream.headers)
+
+    def _asset_response(
+        asset_id: str,
+        *,
+        method: str,
+        range_header: str | None,
+        release_version: str | None,
+        service: ReadService,
+    ) -> Any:
+        proxied = service.asset(
+            release_version,
+            asset_id,
+            method=method,
+            range_header=range_header,
+        )
+        body = proxied.body if method == "GET" else iter(())
+        return StreamingResponse(
+            body,
+            status_code=proxied.status_code,
+            media_type=None,
+            headers=proxied.headers,
+        )
+
+    @app.get("/api/v1/assets/{asset_id}")
+    def asset_get(
+        asset_id: str,
+        range_header: str | None = Header(default=None, alias="Range"),
+        release_version: str | None = Query(default=None),
+        service: ReadService = Depends(get_service),
+    ) -> Any:
+        return _asset_response(
+            asset_id,
+            method="GET",
+            range_header=range_header,
+            release_version=release_version,
+            service=service,
+        )
+
+    @app.head("/api/v1/assets/{asset_id}")
+    def asset_head(
+        asset_id: str,
+        range_header: str | None = Header(default=None, alias="Range"),
+        release_version: str | None = Query(default=None),
+        service: ReadService = Depends(get_service),
+    ) -> Any:
+        return _asset_response(
+            asset_id,
+            method="HEAD",
+            range_header=range_header,
+            release_version=release_version,
+            service=service,
+        )
 
     return app

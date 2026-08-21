@@ -155,7 +155,7 @@ release，但不能 promotion。`promote-postgres` 还要求 bundle 与最新 co
 拒绝/回滚/count audit。writer 只搬运 canonical release 的已确认数据，不新增生物学解释，
 也不把预测或混合证据提升为实验 endpoint。
 
-## C1 只读查询层（已实现，仍不写库）
+## C1/C2 只读查询层（已实现，仍不写库）
 
 `backend/app/` 提供一个不修改数据库的查询层：`ReadService` 负责 release 选择、公开证据
 边界、分页和响应结构，`PostgresReadRepository` 只执行参数化的 SELECT。每次 repository
@@ -172,8 +172,10 @@ S1_002 继续只返回 source 审计信息，不提供 endpoint、下载或 JBro
 会从 `source_annotations` 返回行数和 annotation kind 摘要；fake repository 没有该摘要时
 使用带状态的未实现说明，不填充虚构字段。
 
-本阶段不实现真实数据库 smoke test、写入、`/api/v1/assets` Range 代理、Next.js 页面或
-JBrowse 资产服务。`include_annotations=true` 当前明确返回 422，避免在附表许可和导出
-格式尚未单独审定前把来源特异字段误当作核心 endpoint。FastAPI/uvicorn/httpx/psycopg3
-没有在本环境自动安装；缺少 FastAPI 时 runtime test 会跳过，离线测试通过不等于 HTTP 或
-PostgreSQL 已部署成功。
+C2 已实现不写库的 `/api/v1/assets/{asset_id}` GET/HEAD/单 Range 代理：只读取 published
+release 中 `is_public=true` 的登记资产，origin 必须为登记的 HTTPS URL，不能使用任意
+`?url=`；JBrowse config 链接也通过该同源入口生成。当前仍不实现真实数据库 smoke test、
+写入、Next.js 页面、远端对象 Range 审计或部署。`include_annotations=true` 明确返回 422，
+避免在附表许可和导出格式尚未单独审定前把来源特异字段误当作核心 endpoint。FastAPI/uvicorn/
+httpx/psycopg3 没有在本环境自动安装；缺少 FastAPI 时 runtime test 会跳过，离线测试通过
+不等于 HTTP 或 PostgreSQL 已部署成功。

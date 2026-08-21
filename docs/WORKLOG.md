@@ -827,3 +827,33 @@ PostgreSQL 资源。
   死链接；已登记 config 显示 null/待 assets phase 说明。FastAPI runtime contract test
   统一预期 `invalid_pagination`，并覆盖未知 release、非法 evidence、S1_002 下载和 24 列
   endpoint 响应。
+
+## 2026-08-22 —— v0.3 第三阶段 C2：同源公开资产代理
+
+**范围：** 在 C1 只读查询层上增加登记资产的 GET/HEAD/单 Range 读取入口；没有连接真实
+PostgreSQL、没有访问真实远端对象、没有上传 Hugging Face 或修改 v0.2 canonical 数据。
+
+### 完成内容
+
+1. `PostgresReadRepository.get_public_asset()` 以参数化查询读取选定 published release 中
+   `is_public = TRUE` 的资产登记行，返回 origin URL/host、byte size、SHA-256、MIME、Range
+   标记和 release 身份；未知或非公开 asset 不返回。
+2. 新增 `backend/app/assets.py` 的 `AssetProxyService`。origin 只来自登记行，必须为
+   HTTPS 且 hostname 与 `origin_host` 一致；没有 `url` 查询参数入口。GET/HEAD 使用登记
+   headers，单个 `bytes=start-end`、`start-`、`-suffix` 通过上游 Range 返回 206；非法、
+   多段或资产不支持 Range 返回 416 和 `Content-Range: bytes */size`。不实现多 Range、
+   缓存、重试、运行时整文件 hash 或远端对象上传。
+3. `ReadService` 和 `create_app()` 增加可注入 httpx client/factory；source 的 JBrowse
+   config 链接改为同源 `/api/v1/assets/{asset_id}` URL-encoded `config` 参数，不再生成
+   裸 asset ID 或 pending 死链接；S1_002 仍无 endpoint/JBrowse 入口。
+4. 新增 `tests/test_bted_v03_assets.py`，用 `httpx.MockTransport` 覆盖 GET、HEAD、206、
+   416、404、公开边界和未知 `url` 查询不影响登记 origin 的纯服务测试；FastAPI route 测试
+   在未安装 FastAPI 的环境明确 skipped。
+
+### 验证与限制
+
+- 默认环境专项 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v tests/test_bted_v03_assets.py tests/test_bted_v03_api.py`：18 tests，15 passed，3 skipped（FastAPI runtime 可选依赖缺失）。
+- 主代理在隔离 venv 安装 `requirements-v03.txt` 后验证 API/assets：18/18 PASS；全量
+  `unittest discover`：95/95 PASS（仅有 Starlette TestClient deprecation warning）。
+- 尚未执行真实远端 origin、Content-Range 远端审计、PostgreSQL 查询或部署 smoke test；离线
+  MockTransport/隔离 venv 结果不等同于生产对象可访问性。

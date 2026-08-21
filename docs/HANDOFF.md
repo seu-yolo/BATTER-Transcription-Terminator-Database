@@ -6,9 +6,9 @@
 
 **当前里程碑：** v0.3.0 已完成架构契约、PostgreSQL schema 骨架、只读 canonical
 release 校验/导入计划、B1 确定性 JSONL 物化、B2 离线事务 writer，以及基于既有 v0.2
-JBrowse bundle 的 47 个参考 contig 长度/provenance 注册；C1 只读 FastAPI 查询层已实现并
-通过纯 Python contract tests，但没有连接真实 PostgreSQL，也没有实现 assets/Range、前端
-或部署。
+JBrowse bundle 的 47 个参考 contig 长度/provenance 注册；C1 只读 FastAPI 查询层和 C2
+登记资产 GET/HEAD/单 Range 代理已实现并通过纯 Python contract tests，但没有连接真实
+PostgreSQL、远端资产 smoke test、前端或部署。
 
 ## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
 
@@ -331,11 +331,14 @@ SQL 和 download source 校验只接受 `published_standardized`，S1_002 会 40
 endpoint 详情保留 24 列中的 PMID/DOI，并提供 source-annotation 行数/kind 摘要；完整
 publication 信息从 source detail 获取，没有摘要的 fake 结果会明确标记 `not_loaded_in_c1`。
 
-C1 暂不实现 `/api/v1/assets/{asset_id}`、HEAD/Range、Next.js/JBrowse 资产服务、附表下载、
-真实 PostgreSQL smoke test 或部署。由于 asset route 尚未存在，source 详情中已登记 JBrowse
-config 返回 null 与 pending note，不产生裸 asset ID 死链接；下一阶段实现同源 asset route
-后再恢复可点击 JBrowse URL。FastAPI/uvicorn/httpx/psycopg3 仅在
-`requirements-v03.txt` 声明，当前环境未安装。
+C2 新增 `/api/v1/assets/{asset_id}` 的登记资产 GET/HEAD/单 Range 同源代理：只查询
+published release 中 `is_public=true` 的资产，origin 必须是登记的 HTTPS URL 且 hostname 与
+`origin_host` 一致；无 Range 的 GET/HEAD 返回登记元数据，单 Range 返回 206，非法/多段/不
+支持 Range 返回 416 和 `Content-Range: bytes */size`。路由不接受任意 `url` 查询参数；
+published source 的 JBrowse config 现在通过同源 asset URL 作为 URL-encoded `config` 参数，
+S1_002 仍无入口。C2 不实现多 Range、缓存、重试、整文件运行时 hash、HF 上传、远端网络
+smoke test、Next.js 或部署。FastAPI/uvicorn/httpx/psycopg3 仅在 `requirements-v03.txt`
+声明，当前环境未安装。
 
 验证命令：
 
@@ -347,6 +350,19 @@ git diff --check
 ```
 
 缺少 FastAPI 时 API runtime tests 会 skipped；这是预期，不得写成 HTTP smoke test 已通过。
-安装依赖后再用 `TestClient(create_app(fake_repository))`，最后在隔离 PostgreSQL 中以显式
-`BTED_DATABASE_URL` 运行只读查询和 schema smoke test。不要在本任务安装依赖、连接生产库、
-修改 v0.2 canonical 数据或提交凭据。
+
+## C2 同源资产代理接手说明（2026-08-22）
+
+实现位于 `backend/app/assets.py`，由 `ReadService.asset()` 和
+`backend/app/main.py` 的 `GET|HEAD /api/v1/assets/{asset_id}` 路由调用。数据库查询由
+`PostgresReadRepository.get_public_asset()` 完成，只返回选定 published release 中公开的
+登记资产；请求本身不能提供 origin URL。`AssetProxyService` 支持注入 `httpx.Client` 或
+factory，默认运行时才创建 httpx client，便于离线 MockTransport 测试。
+
+当前默认环境专项合计 18 tests，其中 15 passed、3 skipped（缺少 FastAPI runtime 依赖）；
+主代理已在隔离 venv 安装 requirements 后验证 API/assets 18/18 PASS，全量
+`unittest discover` 95/95 PASS（仅有 Starlette TestClient deprecation warning）。这些仍是
+测试 transport/隔离环境结果，未执行真实 HTTP origin、真实 PostgreSQL 或远程 Range smoke
+test。下一步如要上线，应在隔离环境安装依赖，验证真实
+`assets` 登记的 HTTPS host、上游 Content-Range/长度和部署反向代理行为，再进行 Pages/API
+部署，不要把离线 MockTransport 结果写成远端可用性证明。

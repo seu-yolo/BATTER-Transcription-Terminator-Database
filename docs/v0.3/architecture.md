@@ -129,14 +129,16 @@ canonical 小表及其 provenance，不包括重新下载的原始测序数据�
 - 资产 Range 代理只能服务登记且 checksum 可验证的对象，不能把 FastAPI 变成任意
   URL 代理。
 
-## 6. C1 已做与未做
+## 6. C1/C2 已做与未做
 
 C1 在 `backend/app/` 实现了不写库的 FastAPI read layer：查询只读 PostgreSQL、按 release
 和公开证据边界分页返回 sources/assemblies/endpoints/genes/augmentation，并提供 endpoint
 TSV/BED6 导出；service/repository 可用 fake repository 离线测试。它不改变 canonical release
 或 v0.2 网站。
 
-C1 仍不包含 `/api/v1/assets/{asset_id}` 的 HEAD/Range 同源代理、Next.js 页面、
-Render/Neon/Hugging Face/Vercel 部署、真实 PostgreSQL smoke test、NCBI 新数据导入、gene
-context 计算、训练集生成或 JBrowse 配置重建。安装可选依赖且在隔离环境验证后，才可推进
-真实查询服务和资产代理；不能把离线 contract tests 写成部署完成。
+C2 增加了 `/api/v1/assets/{asset_id}` 的登记资产 GET/HEAD/单 Range 同源代理：只允许
+published release 中 `is_public=true` 的资产，origin 必须是登记的 HTTPS URL，JBrowse config
+链接也通过该同源入口生成。C2 不实现多 Range、缓存、重试、整文件运行时 hash、HF 上传或
+真实网络 smoke test。Next.js 页面、Render/Neon/Hugging Face/Vercel 部署、真实 PostgreSQL
+smoke test、NCBI 新数据导入、gene context 计算、训练集生成或 JBrowse 配置重建仍未完成；
+不能把离线 contract tests 写成部署完成。

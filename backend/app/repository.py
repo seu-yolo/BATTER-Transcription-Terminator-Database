@@ -619,6 +619,38 @@ class PostgresReadRepository:
         )
         return rows[0] if rows else None
 
+    def get_public_asset(self, release: ReleaseContext, asset_id: str) -> Mapping[str, Any] | None:
+        """Return one public asset registered in the selected published release."""
+
+        with self._cursor() as cursor:
+            cursor.execute(
+                "SELECT a.asset_id, a.release_version, a.asset_kind, a.logical_path, "
+                "a.origin_url, a.origin_host, a.byte_size, a.sha256, a.mime_type, "
+                "a.supports_range, a.redistribution_status, a.is_public "
+                "FROM assets AS a JOIN release_versions AS r "
+                "ON r.release_version = a.release_version "
+                "WHERE a.asset_id = %s AND a.release_version = %s "
+                "AND r.status = 'published' AND a.is_public = TRUE",
+                (asset_id, release.release_version),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "asset_id": row[0],
+            "release_version": row[1],
+            "asset_kind": row[2],
+            "logical_path": row[3],
+            "origin_url": row[4],
+            "origin_host": row[5],
+            "byte_size": int(row[6]),
+            "sha256": row[7],
+            "mime_type": row[8],
+            "supports_range": bool(row[9]),
+            "redistribution_status": row[10],
+            "is_public": bool(row[11]),
+        }
+
     def validate_source_ids(self, release: ReleaseContext, source_ids: Sequence[str], *, published_only: bool = False) -> None:
         if not source_ids:
             return

@@ -11,10 +11,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from backend.importer.canonical import V02_ENDPOINT_COLUMNS
 
+from .assets import AssetProxyResponse, AssetProxyService
 from .contracts import Page, ReadRepository, ReleaseContext, RepositoryNotFound, RepositoryUnavailable
 from .errors import ApiError, invalid, not_found
 
@@ -62,9 +63,21 @@ class DownloadStream:
 
 
 class ReadService:
-    def __init__(self, repository: ReadRepository, *, jbrowse_base: str = "/jbrowse/") -> None:
+    def __init__(
+        self,
+        repository: ReadRepository,
+        *,
+        jbrowse_base: str = "/jbrowse/",
+        asset_client: Any | None = None,
+        asset_client_factory: Any | None = None,
+    ) -> None:
         self.repository = repository
         self.jbrowse_base = jbrowse_base.rstrip("/") + "/"
+        self.asset_proxy = AssetProxyService(
+            repository,
+            http_client=asset_client,
+            http_client_factory=asset_client_factory,
+        )
 
     def _release(self, release_version: str | None) -> ReleaseContext:
         try:
@@ -190,12 +203,13 @@ class ReadService:
                 f"/api/v1/downloads/endpoints?release_version={quote(release.release_version)}"
                 f"&source_id={quote(source_id)}"
             )
-            # C1 does not expose /api/v1/assets yet, so do not advertise a
-            # dead JBrowse config URL. The registered config remains in the
-            # database for the later assets/Range phase.
             if row.get("has_jbrowse") and config_asset and config_asset.get("asset_id"):
-                links["jbrowse"] = None
-                links["jbrowse_note"] = "pending /api/v1/assets implementation"
+                config_url = f"/api/v1/assets/{quote(str(config_asset['asset_id']), safe='')}"
+                assembly_accession = assembly.get("accession")
+                query: dict[str, str] = {"config": config_url}
+                if assembly_accession:
+                    query["assembly"] = str(assembly_accession)
+                links["jbrowse"] = self.jbrowse_base + "?" + urlencode(query)
         result = {
             "source_id": source_id,
             "release_status": row.get("release_status"),
@@ -424,6 +438,37 @@ class ReadService:
         if row is None:
             raise not_found("gene_not_found", f"gene not found: {gene_id}", field="gene_id", release_version=release.release_version)
         return {"release": release.as_dict(), **self._gene_item(release, row)}
+
+    def asset(
+        self,
+        release_version: str | None,
+        asset_id: str,
+        *,
+        method: str = "GET",
+        range_header: str | None = None,
+    ) -> AssetProxyResponse:
+        release = self._release(release_version)
+        try:
+            return self.asset_proxy.fetch(
+                release,
+                asset_id,
+                method=method,
+                range_header=range_header,
+            )
+        except RepositoryNotFound as exc:
+            raise not_found(
+                "asset_not_found",
+                f"public asset not found: {asset_id}",
+                field="asset_id",
+                release_version=release.release_version,
+            ) from exc
+        except RepositoryUnavailable as exc:
+            raise ApiError(
+                503,
+                "repository_unavailable",
+                "query repository is unavailable",
+                release_version=release.release_version,
+            ) from exc
 
     def augmentation(self, release_version: str | None, *, page: int, page_size: int) -> dict[str, Any]:
         release = self._release(release_version)

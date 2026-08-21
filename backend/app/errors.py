@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 
 @dataclass
@@ -13,6 +13,7 @@ class ApiError(Exception):
     message: str
     field: str | None = None
     release_version: str | None = None
+    headers: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
         super().__init__(self.message)

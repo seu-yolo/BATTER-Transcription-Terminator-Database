@@ -1,7 +1,7 @@
 # BTED v0.3 API 契约
 
 **前缀：** `/api/v1`
-**状态：** v0.3.0 C1：只读 FastAPI 查询层已实现；Next.js、资产 Range 代理和真实数据库部署仍未实现
+**状态：** v0.3.0 C2：只读 FastAPI 查询层与同源资产 GET/HEAD/单 Range 代理已实现；真实数据库部署仍未完成
 **默认数据：** 当前 `published` release；所有响应显式返回 `release_version`
 
 ## 1. 通用规则
@@ -424,11 +424,12 @@ manifest、source manifest、`source_table_or_file`/`original_row_reference` 和
 checksum。API 不能在运行时重新解释作者坐标、合并同坐标 endpoint 或从模型预测补齐
 缺失数据；任何科学数据变化都要先生成新 release 并重新导入。
 
-v0.3.0 C1 已实现不写库的 FastAPI 读层，但仍不实现资产 Range 代理、Next.js、Hugging
-Face 上传、gene context 计算或训练集生成。本文件冻结路径、字段、边界、错误和 Range
-行为；当前实现只覆盖其中的查询和 TSV/BED6 下载部分，后续实现必须保持这些合约。
+v0.3.0 C2 已实现不写库的 FastAPI 读层和登记资产的 GET/HEAD/单 Range 代理，但仍不实现
+Next.js、Hugging Face 上传、gene context 计算或训练集生成。本文件冻结路径、字段、边界、
+错误和 Range 行为；当前实现不连接真实 PostgreSQL 或远端 smoke test，后续实现必须保持这些
+合约。
 
-## 5. C1 只读实现说明
+## 5. C1/C2 只读实现说明
 
 实现位于 `backend/app/`：`ReadService` 独立承载 release、分页、排序、证据边界和
 S1_002 规则，`PostgresReadRepository` 负责参数化 PostgreSQL 查询，`create_app()` 提供
@@ -438,19 +439,25 @@ S1_002 规则，`PostgresReadRepository` 负责参数化 PostgreSQL 查询，`cr
 请求值不会拼接为 SQL。
 
 当前可用路由为 health、stats、sources、assemblies、endpoints、genes、augmentation，
-以及 `downloads/endpoints` 的流式 TSV/BED6 导出。endpoint 响应保留 v0.2 的全部 24 列；
+`downloads/endpoints` 的流式 TSV/BED6 导出，以及 `GET|HEAD /api/v1/assets/{asset_id}`。
+endpoint 响应保留 v0.2 的全部 24 列；
 BED6 的 `score` 暂固定为 `0`，原始 `signal_or_score` 只在 TSV/JSON 中保留，不把显示字段
 冒充实验信号。`include_annotations=true` 在 C1 明确返回 422，待许可和附表导出边界
-单独实现。资产 `/api/v1/assets/{asset_id}`、Range 代理、Next.js 页面和 JBrowse 资产
-服务不在本阶段，不能把 manifest link 误解为已经可访问的资产接口。endpoint 详情保留 24
-列中的 PMID/DOI，并返回 source-annotation 行数/证据类别摘要；完整 publication 信息从
-source detail 获取。如果 fake repository 未提供该摘要，
-响应会明确标为 `not_loaded_in_c1`，而不是伪造附表内容。由于资产入口尚未实现，source
-详情中的已登记 JBrowse config 当前返回 `null` 和待实现说明，不生成死链接。
+单独实现。C2 的资产代理只查询当前 published release 中 `is_public=true` 的登记行；
+origin 必须是登记的 HTTPS URL 且 hostname 与 `origin_host` 一致，路由不接受 `url` 查询
+参数。无 Range 的 GET/HEAD 返回登记的 Content-Length、Content-Type、ETag 和 release
+header；单个 `bytes=start-end`、`start-` 或 `-suffix` 通过上游 Range 返回 206，非法、
+多段或不支持 Range 返回 416 和 `Content-Range: bytes */size`。C2 不实现多 Range、缓存、
+重试、整文件运行时 hash、HF 上传或真实网络 smoke test。endpoint 详情保留 24 列中的
+PMID/DOI，并返回 source-annotation 行数/证据类别摘要；完整 publication 信息从 source
+detail 获取。如果 fake repository 未提供该摘要，响应会明确标为 `not_loaded_in_c1`，而
+不是伪造附表内容。published source 的 JBrowse 链接现在通过同源
+`/api/v1/assets/{config_asset_id}` 作为 URL-encoded `config` 参数生成；audit-only source
+仍无 endpoint/JBrowse 入口。
 
 FastAPI、uvicorn、httpx 和 psycopg3 是可选运行依赖，统一列在根目录
 `requirements-v03.txt`；本仓库的离线测试不安装依赖，也不连接真实数据库。当前测试覆盖
-纯 Python service/repository contract；若环境缺少 FastAPI，runtime smoke test 会被明确
-标记为 skipped，而不是报告为通过。安装依赖后可用 `backend.app.main.create_app()` 注入
-fake repository 做 HTTP contract smoke test，再配置显式 `BTED_DATABASE_URL` 执行隔离环境
-的只读查询。
+纯 Python service/repository contract；C2 的 asset proxy 测试使用 `httpx.MockTransport`。
+若环境缺少 FastAPI，runtime smoke test 会被明确标记为 skipped，而不是报告为通过。安装
+依赖后可用 `backend.app.main.create_app()` 注入 fake repository/client 做 HTTP contract smoke
+test，再配置显式 `BTED_DATABASE_URL` 执行隔离环境的只读查询。
