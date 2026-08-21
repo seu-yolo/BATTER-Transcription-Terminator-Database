@@ -666,3 +666,65 @@ PostgreSQL 资源。
 - `ssh -T git@github.com` 确认本机 SSH 身份有效，随后通过 SSH 成功推送完整分支，保留 CI 与 Pages workflow。
 - 已创建 Draft PR #4：`https://github.com/LIMwhatnameisavailable/BATTER-Transcription-Terminator-Database/pull/4`，基线为 PR #3 的 `refactor/project-structure-and-literature-notes-v0.1`；CI `BTED validation` 通过。
 - 已创建 `v0.2.0` GitHub Release 草稿并上传数据包、JBrowse 包及两个 SHA-256 文件。Release 尚未发布，Pages workflow 尚未触发。
+
+## 2026-08-21 —— v0.3 第三阶段 B1：确定性 PostgreSQL 行物化包
+
+**分支：** `feature/bted-v0.3-dynamic-service` | **状态：** 已实现，待主代理审查；本轮未提交、未推送、未连接数据库
+
+### 完成内容
+
+1. 新增 `backend/importer/materialize.py`，在 canonical validator 通过且
+   `postgresql_ready=true` 后生成确定性 JSONL staging bundle；新增
+   `MaterializationResult`/`MaterializationError` 和公开 `materialize_release`、
+   `build_materialization_bundle` 接口。
+2. canonical validator 增加只读 `export_snapshot()`，只向物化器暴露已验证的来源 manifest、
+   核心 endpoint、附表原始行、registry、contig provenance 和已校验 assets；失败或长度未
+   核实的 release 不可导出。
+3. 新增 `materialize` CLI：要求显式输出目录和 HTTPS origin；非空目录拒绝覆盖，临时目录
+   完成后原子改名；不发起远端请求、不生成数据库连接信息。manifest 保存 canonical/contig
+   registry checksum、表行数/checksum、自然键辅助列模式、`planned_not_verified` origin
+   状态和 `write_mode=not_written`。
+4. 物化结果覆盖真实 v0.2.0：1/1/13/20/47/22/32/21/28,399/81,477/0/0/127 行
+   （release_versions/import_runs/publications/assemblies/contigs/sources/accessions/
+   samples/endpoints/source_annotations/genes/context/assets）。S1_002 只保留审计关联，
+   无 endpoint、附表或 JBrowse 资产入口。
+5. 附表按 `fields.json` evidence role 分组；`author_called_endpoint` 映射为
+   `author_annotation`，预测字段保持 `prediction_annotation`，不提升核心 endpoint 证据。
+   每个原始附表字段均在至少一个 `annotation_json` 分组中保留，行级 provenance 保存定位、
+   证据边界和必要的角色映射；完整字段定义集中到 manifest 的 source-level provenance，
+   不重复复制整行。source-specific `source_annotations.tsv` 的 asset_kind 使用 schema
+   已有的 `metadata`，不扩展数据库枚举。
+6. 新增 B1 回归测试：真实行数、24 列、自然键/外键闭包、S1_002 边界、附表字段覆盖与
+   prediction 分层、合法 asset_kind、非法 origin、非空目录保护、固定时间 checksum 一致、
+   canonical 失败不生成文件。
+
+### B1 性能修正（主审反馈）
+
+- 行级 `source_annotations.jsonl` 的 provenance 不再重复写入整组 `field_roles` 和
+  `field_definitions`；只保留来源文件/行号、source record、未映射列、endpoint evidence、
+  必要边界，以及 `author_called_endpoint → author_annotation` 的紧凑
+  `original_evidence_roles`。
+- 物化 manifest 新增每个 source 一条 `annotation_field_provenance`，集中保存相对的
+  `fields.json` 路径与 SHA-256、完整字段定义，以及 `source_annotations.tsv` 的路径、
+  SHA-256 和行数；不写入本机绝对路径。
+- 真实构建后 `source_annotations.jsonl` 为约 77 MiB、总 bundle 约 115 MiB（原实现约
+  248 MiB 的附表文件）；新增 100 MiB/150 MiB 体积回归测试。所有 81,477 条分组行和原始
+  字段覆盖保持不变。
+- 资产的 `supports_range` 在 planned origin 尚未通过 HTTP 206 审计前统一为 `false`；
+  不从本地文件或计划 URL 推断远程 Range 能力。
+
+### 验证
+
+- `python3 -m unittest -v tests/test_bted_v03_importer.py`：32/32 PASS。
+- 真实 `/tmp/bted-b1-real` 物化成功，表计数与上面一致；两次固定时间构建的
+  `SHA256SUMS.txt` 一致；附表 JSONL 约 77 MiB、总目录约 115 MiB。
+- `python3 -m unittest discover -s tests -p 'test*.py' -q`：64/64 PASS；
+  `python3 -m unittest -v tests/test_bted_ingestion.py`：4/4 PASS；真实 validate 与
+  `git diff --check` 通过。
+
+### 未完成/边界
+
+- 这是写库前可审计中间层，不是 PostgreSQL INSERT；下一阶段仍需独立 writer、DDL smoke
+  test、事务切换和 API 查询实现。
+- `assets.origin_url` 仅是 HTTPS 计划 URL；远程 origin 是否存在、Range 是否可用尚未验证。
+- `genes` 与 `endpoint_gene_context` 仍为零行；参考 FASTA/FAI 不复制进 Git 或当前 bundle。

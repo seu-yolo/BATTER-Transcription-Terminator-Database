@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 from backend.importer.canonical import V02_ENDPOINT_COLUMNS, validate_release
+from backend.importer.materialize import MaterializationError, materialize_release
 from scripts.build_reference_contig_registry import (
     REFERENCE_CONTIG_COLUMNS,
     RegistryBuildError,
@@ -379,6 +380,198 @@ def make_audit_fixture(root: Path) -> Path:
 
 
 class TestBtedV03Importer(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        # Build one real bundle for the B1 tests.  Keeping it at class scope
+        # avoids repeatedly serializing the 28,399 endpoints and 81k grouped
+        # annotation rows while still exercising the real v0.2 release.
+        cls.materialization_tmp = tempfile.TemporaryDirectory()
+        cls.materialization_root = Path(cls.materialization_tmp.name)
+        cls.materialization_output = cls.materialization_root / "bundle"
+        cls.materialization_result = materialize_release(
+            RELEASE_ROOT,
+            repo_root=REPO_ROOT,
+            output_dir=cls.materialization_output,
+            asset_origin_base="https://example.test/assets",
+            generated_at_utc="2026-08-21T00:00:00Z",
+        )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.materialization_tmp.cleanup()
+
+    def _read_bundle_rows(self, table: str) -> list[dict[str, object]]:
+        path = self.materialization_output / f"{table}.jsonl"
+        with path.open(encoding="utf-8") as handle:
+            return [json.loads(line) for line in handle if line.strip()]
+
+    def test_real_materialization_counts_and_audit_only_boundary(self) -> None:
+        counts = self.materialization_result.table_counts
+        self.assertEqual(counts["release_versions"], 1)
+        self.assertEqual(counts["import_runs"], 1)
+        self.assertEqual(counts["publications"], 13)
+        self.assertEqual(counts["assemblies"], 20)
+        self.assertEqual(counts["contigs"], 47)
+        self.assertEqual(counts["sources"], 22)
+        self.assertEqual(counts["source_accessions"], 32)
+        self.assertEqual(counts["samples"], 21)
+        self.assertEqual(counts["endpoints"], 28399)
+        self.assertEqual(counts["source_annotations"], 81477)
+        self.assertEqual(counts["genes"], 0)
+        self.assertEqual(counts["endpoint_gene_context"], 0)
+        self.assertEqual(counts["assets"], 127)
+        self.assertTrue(self.materialization_result.manifest["postgresql_ready"])
+        self.assertEqual(self.materialization_result.manifest["asset_origin"]["asset_origin_status"], "planned_not_verified")
+        s2_endpoints = [row for row in self._read_bundle_rows("endpoints") if row["source_id_ref"] == "BATTER_S1_002"]
+        s2_annotations = [row for row in self._read_bundle_rows("source_annotations") if row["source_id_ref"] == "BATTER_S1_002"]
+        s2 = next(row for row in self._read_bundle_rows("sources") if row["source_id"] == "BATTER_S1_002")
+        self.assertEqual(s2_endpoints, [])
+        self.assertEqual(s2_annotations, [])
+        self.assertFalse(s2["has_jbrowse"])
+
+    def test_materialization_preserves_24_columns_and_natural_key_closure(self) -> None:
+        endpoints = self._read_bundle_rows("endpoints")
+        self.assertTrue(all(set(V02_ENDPOINT_COLUMNS).issubset(row) for row in endpoints))
+        sources = self._read_bundle_rows("sources")
+        source_ids = {row["source_id"] for row in sources}
+        pmids = {row["pmid"] for row in self._read_bundle_rows("publications")}
+        assemblies = {row["assembly_accession"] for row in self._read_bundle_rows("assemblies")}
+        samples = {(row["source_id_ref"], row["sample_id"]) for row in self._read_bundle_rows("samples")}
+        contigs = {
+            (row["assembly_accession"], row["contig_accession"])
+            for row in self._read_bundle_rows("contigs")
+        }
+        self.assertTrue({row["source_id_ref"] for row in endpoints} <= source_ids)
+        self.assertTrue({row["publication_id_ref"] for row in sources} <= pmids)
+        self.assertTrue({row["assembly_id_ref"] for row in sources} <= assemblies)
+        self.assertTrue(
+            {(row["source_id_ref"], row["sample_id_ref"]["sample_id"]) for row in endpoints}
+            <= samples
+        )
+        self.assertTrue(
+            {
+                (row["contig_id_ref"]["assembly_accession"], row["contig_id_ref"]["contig_accession"])
+                for row in endpoints
+            }
+            <= contigs
+        )
+        self.assertTrue(
+            all("/" not in row["asset_id"] for row in self._read_bundle_rows("assets"))
+        )
+
+    def test_source_annotation_fields_are_lossless_and_prediction_is_separate(self) -> None:
+        annotations = self._read_bundle_rows("source_annotations")
+        by_source: dict[str, set[str]] = {}
+        for row in annotations:
+            by_source.setdefault(str(row["source_id_ref"]), set()).update(
+                row["annotation_json"].keys()
+            )
+        for source_id, observed_fields in by_source.items():
+            path = RELEASE_ROOT / "records" / source_id / "source_annotations.tsv"
+            with path.open(encoding="utf-8", newline="") as handle:
+                fields = set(csv.DictReader(handle, delimiter="\t").fieldnames or [])
+            self.assertTrue(fields <= observed_fields, source_id)
+        prediction = next(row for row in annotations if row["annotation_kind"] == "prediction_annotation")
+        self.assertNotIn(prediction["annotation_kind"], {"observed_signal", "called_endpoint", "author_called_endpoint"})
+        self.assertIn("endpoint_evidence_class", prediction["provenance_json"])
+        self.assertNotIn("original_row", prediction["provenance_json"])
+        self.assertNotIn("field_definitions", prediction["provenance_json"])
+        self.assertNotIn("field_roles", prediction["provenance_json"])
+        author = next(
+            row for row in annotations
+            if row["annotation_kind"] == "author_annotation"
+            and "original_evidence_roles" in row["provenance_json"]
+        )
+        self.assertEqual(
+            set(author["provenance_json"]["original_evidence_roles"]),
+            {"author_called_endpoint"},
+        )
+
+        field_provenance = self.materialization_result.manifest["annotation_field_provenance"]
+        self.assertEqual(len(field_provenance), 22)
+        self.assertEqual(
+            {item["source_id"] for item in field_provenance},
+            {row["source_id"] for row in self._read_bundle_rows("sources")},
+        )
+        for item in field_provenance:
+            self.assertTrue(item["fields_json_path"].startswith("records/"))
+            self.assertNotIn("/Users/", item["fields_json_path"])
+            self.assertRegex(item["fields_json_sha256"], r"^[0-9a-f]{64}$")
+            self.assertGreaterEqual(item["source_annotations_row_count"], 0)
+            if item["source_annotations_path"]:
+                self.assertTrue(item["source_annotations_path"].startswith("records/"))
+                self.assertRegex(item["source_annotations_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_source_annotation_bundle_size_is_bounded(self) -> None:
+        annotation_path = self.materialization_output / "source_annotations.jsonl"
+        total_size = sum(path.stat().st_size for path in self.materialization_output.iterdir())
+        # A repeated field dictionary previously made this one file roughly
+        # 248 MiB.  Keep the staging representation comfortably below 100 MiB
+        # for the current release while retaining all annotation values.
+        self.assertLess(annotation_path.stat().st_size, 100 * 1024 * 1024)
+        self.assertLess(total_size, 150 * 1024 * 1024)
+
+    def test_asset_kinds_and_natural_key_helper_fields_are_explicit(self) -> None:
+        allowed = {
+            "fasta", "fai", "gff3", "tbi", "bigwig", "bed", "config", "metadata",
+            "checksum", "archive", "release_manifest", "other",
+        }
+        assets = self._read_bundle_rows("assets")
+        self.assertTrue({row["asset_kind"] for row in assets} <= allowed)
+        self.assertTrue(all("origin_status" not in row for row in assets))
+        self.assertTrue(all(row["supports_range"] is False for row in assets))
+        accession_rows = self._read_bundle_rows("source_accessions")
+        self.assertTrue(all("metadata_json" not in row for row in accession_rows))
+        self.assertTrue(all("source_id_ref" in row for row in accession_rows))
+
+    def test_materialization_fixed_timestamp_is_byte_reproducible(self) -> None:
+        output = self.materialization_root / "bundle-second"
+        result = materialize_release(
+            RELEASE_ROOT,
+            repo_root=REPO_ROOT,
+            output_dir=output,
+            asset_origin_base="https://example.test/assets",
+            generated_at_utc="2026-08-21T00:00:00Z",
+        )
+        first = (self.materialization_output / "SHA256SUMS.txt").read_text(encoding="utf-8")
+        second = (output / "SHA256SUMS.txt").read_text(encoding="utf-8")
+        self.assertEqual(first, second)
+        self.assertEqual(result.manifest["tables"], self.materialization_result.manifest["tables"])
+
+    def test_materialization_rejects_invalid_origin_and_nonempty_directory(self) -> None:
+        with self.assertRaises(MaterializationError):
+            materialize_release(
+                RELEASE_ROOT,
+                repo_root=REPO_ROOT,
+                output_dir=self.materialization_root / "invalid-origin",
+                asset_origin_base="http://example.test/assets",
+                generated_at_utc="2026-08-21T00:00:00Z",
+            )
+        nonempty = self.materialization_root / "nonempty"
+        nonempty.mkdir()
+        (nonempty / "keep.txt").write_text("do not overwrite", encoding="utf-8")
+        with self.assertRaises(MaterializationError):
+            materialize_release(
+                RELEASE_ROOT,
+                repo_root=REPO_ROOT,
+                output_dir=nonempty,
+                asset_origin_base="https://example.test/assets",
+                generated_at_utc="2026-08-21T00:00:00Z",
+            )
+        self.assertEqual((nonempty / "keep.txt").read_text(encoding="utf-8"), "do not overwrite")
+
+    def test_failed_validation_does_not_materialize(self) -> None:
+        output = self.materialization_root / "failed"
+        with self.assertRaises(MaterializationError):
+            materialize_release(
+                RELEASE_ROOT,
+                repo_root=REPO_ROOT,
+                contig_registry=self.materialization_root / "missing-contigs.tsv",
+                output_dir=output,
+                asset_origin_base="https://example.test/assets",
+                generated_at_utc="2026-08-21T00:00:00Z",
+            )
+        self.assertFalse(output.exists())
     def test_real_v02_release_is_happy_path_and_plan_is_deterministic(self) -> None:
         first = validate_release(RELEASE_ROOT)
         second = validate_release(RELEASE_ROOT)
@@ -435,7 +628,6 @@ class TestBtedV03Importer(unittest.TestCase):
                 "metadata",
                 "checksum",
                 "archive",
-                "source_annotation",
             }
         )
         self.assertTrue(

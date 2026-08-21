@@ -93,3 +93,37 @@ plan 中的 assets 使用无 `/` 的稳定 asset_id、schema 允许的 `asset_ki
 字段；source accession 使用 `accession_namespace`，不把别名当作物理列。参考 FASTA/FAI
 不进入 Git 或当前 canonical asset 计划，registry 只记录可复核的 asset basename 和
 checksum。builder 和检查命令见 [`docs/v0.3/importer.md`](../../docs/v0.3/importer.md)。
+
+## B1 行物化（仍未写库）
+
+第三阶段 B1 在 `backend/importer/materialize.py` 中把通过上述校验、且
+`postgresql_ready=true` 的 release 物化为确定性的 JSONL staging bundle。它覆盖
+schema 中的 release/import、publication、assembly/contig、source/accession/sample、
+endpoint、source annotation、asset 以及明确的零行 gene/context 表；当前真实快照的
+行数为 `1/1/13/20/47/22/32/21/28,399/81,477/0/0/127`。它不安装或调用 psycopg，不
+连接 PostgreSQL，也不下载远程对象。
+
+运行时必须显式指定空的输出目录和 HTTPS `--asset-origin-base`。origin 仅用于生成未来
+同源代理的计划 URL，manifest 标为 `planned_not_verified`，不代表对象已经上线。固定
+`--generated-at-utc` 后，同一 canonical release 可复建相同 checksum；非空目录不会被覆盖。
+在远端对象通过 HTTP 206/Range 审计之前，物化 `assets.supports_range` 固定为 `false`，
+不从本地文件或计划 URL 推断远程能力。
+
+JSONL 保留 schema 对应字段，并额外提供 `source_id_ref`、`assembly_id_ref`、
+`contig_id_ref`、`sample_id_ref` 等自然键辅助列，供下一阶段 writer 解析 identity 外键；
+这些 `_ref` 不是数据库新增列。来源附表按 `fields.json` 的 evidence role 分组进入
+`annotation_json`，预测角色保持 `prediction_annotation`，不会升级 endpoint 证据。原始
+附表的所有列至少出现在一个分组 JSON 中；`provenance_json` 保存来源文件、行定位、
+未映射 helper 列和必要的证据边界，不在每行重复整组字段字典。标准角色由
+`annotation_kind` 表示；只有 `author_called_endpoint → author_annotation` 的容器映射
+保留紧凑的 `original_evidence_roles`。完整字段定义及 `fields.json`/`source_annotations.tsv`
+的摘要在物化 manifest 的 `annotation_field_provenance` 中按 source 各登记一次。
+`source_annotations.tsv` 属于 schema 已有的 `metadata` asset_kind，不会引入
+`source_annotation` 枚举；`assets` 行也不添加只用于 bundle 的 `origin_status`。
+
+当前真实 v0.2.0 的物化 bundle 中，`source_annotations.jsonl` 约 77 MiB、总目录约
+115 MiB；测试将其限制在 100 MiB/150 MiB 以下，以防止重复 provenance 再次导致不必要
+的体积增长。该限制不改变 81,477 条附表分组行或其原始字段覆盖。
+
+物化输出是可审计中间层，不是 PostgreSQL 快照，不表示已经执行 INSERT。真正 writer 仍
+需在新 release 的 staging schema 中按外键顺序插入，并在单事务中切换发布状态。

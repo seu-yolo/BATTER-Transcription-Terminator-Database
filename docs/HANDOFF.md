@@ -219,3 +219,42 @@ git diff --check
 - 不把作者预测注释解释为新的实验结果；
 - 不把原始测序、出版商工作簿、大型 JBrowse 文件或凭据提交到 Git；
 - 不在未确认参考、坐标、contig、strand 或许可时猜测补齐。
+
+## v0.3 第三阶段 B1 接手说明（2026-08-21）
+
+当前 `feature/bted-v0.3-dynamic-service` 已增加确定性 PostgreSQL 行物化中间层，但仍未
+提交或推送。实现入口为 `backend/importer/materialize.py`，CLI 为：
+
+```bash
+python3 scripts/import_bted_v03.py materialize \
+  --release-root data/public/v0.2.0 \
+  --output-dir /tmp/bted-v03-staging \
+  --asset-origin-base https://example.test/assets \
+  --generated-at-utc 2026-08-21T00:00:00Z
+```
+
+真实 v0.2.0 输出的表计数为 1/1/13/20/47/22/32/21/28,399/81,477/0/0/127，顺序对应
+release_versions/import_runs/publications/assemblies/contigs/sources/source_accessions/
+samples/endpoints/source_annotations/genes/endpoint_gene_context/assets。`BATTER_S1_002`
+只生成审计关联行，不生成 endpoint、source annotation 或 JBrowse 资产入口。JSONL 的
+`*_ref` 是给未来 writer 解析 PostgreSQL identity 的自然键辅助列，不是 schema 新物理列；
+origin URL 仅是 `planned_not_verified` 计划值。
+
+已完成测试：`tests/test_bted_v03_importer.py` 32/32 PASS；包括真实行数、24 列保留、自然
+键闭包、附表字段覆盖、预测分层、asset_kind 枚举、非法 origin、非空目录保护、固定时间
+重复 checksum、provenance 体积回归和失败校验不生成输出。另有全量
+`unittest discover` 64/64、`tests/test_bted_ingestion.py` 4/4、真实 validate 与
+`git diff --check` 通过。不要把 `/tmp` bundle 或参考 FASTA/FAI 放入 Git；本任务不实现
+writer、psycopg、API 或部署。
+
+### B1 provenance 体积修正
+
+主审反馈后，行级 annotation provenance 已改为紧凑形式：不再在 81,477 行中重复完整
+`field_roles`/`field_definitions`，只保留定位、未映射列、endpoint evidence 和必要边界；
+作者端点角色映射只记录 `original_evidence_roles`。完整字段字典及
+`fields.json`/`source_annotations.tsv` 的 checksum/行数按 source 各写一条到物化 manifest
+的 `annotation_field_provenance`，所有路径均相对 release，不含本机绝对路径。真实 bundle
+当前约为 77 MiB（附表 JSONL）/115 MiB（总目录），新增 100/150 MiB 体积回归测试；原始
+字段联合覆盖和 81,477 行计数不变。旧测试中曾允许的 schema 外 `source_annotation`
+asset_kind 已删除。由于 origin 仍是 `planned_not_verified`，所有物化 asset 行的
+`supports_range` 均为 `false`；未来通过 HTTP 206 审计后再由资产注册阶段改为 `true`。

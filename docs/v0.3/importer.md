@@ -149,8 +149,7 @@ endpoint/annotation 键集合以数量、首尾样本和集合 SHA-256 表示，
 `failed`，但不会执行 INSERT。`assets` 只列出 release entry 已声明、实际存在、SHA-256
 已验证且不超过 50 MiB 的小型 canonical 文件；每项含不带 `/` 的稳定 `asset_id`、逻辑
 路径、来源、类型、摘要、字节数和 schema 对应的 `is_public` 标记，不生成 HF/origin URL。
-`asset_kind` 使用数据库允许的枚举（如 `bed`、`metadata`、`checksum`、
-`source_annotation`）；`endpoints.bed` 映射为 `bed`，`SHA256SUMS.txt` 映射为
+`asset_kind` 使用数据库允许的枚举（如 `bed`、`metadata`、`checksum`）；`endpoints.bed` 映射为 `bed`，`SHA256SUMS.txt` 映射为
 `checksum`，其它当前 JSON/TSV 映射为 `metadata`。`genes` 和
 `endpoint_gene_context` 在本里程碑明确为零行。
 
@@ -168,6 +167,62 @@ PostgreSQL INSERT。
 `release -> publication/assembly -> source/accession/sample -> endpoint/annotation ->
 asset` 顺序写入一个新的 release，并在事务内切换 published 状态。当前实现刻意不做
 psycopg、Neon、Render 或生产写库。
+
+## 第三阶段 B1：确定性 PostgreSQL 行物化包
+
+`backend/importer/materialize.py` 提供真正写库前的第二层中间产物。它先重新运行
+canonical validator；只有 `ok=true` 且 `postgresql_ready=true` 时才生成文件。它不使用
+psycopg、不连接数据库、不发起网络请求，也不修改 `data/public/v0.2.0`。
+
+```bash
+python3 scripts/import_bted_v03.py materialize \
+  --release-root data/public/v0.2.0 \
+  --output-dir /tmp/bted-v03-staging \
+  --asset-origin-base https://example.test/assets \
+  --generated-at-utc 2026-08-21T00:00:00Z
+```
+
+`--output-dir` 和 `--asset-origin-base` 都必须显式给出；非空目录拒绝覆盖。origin 只
+是未来服务层的 HTTPS 计划前缀，bundle 把状态写为 `planned_not_verified`，不表示远程
+对象已经存在或可访问。物化行的 `supports_range` 默认是 `false`；只有未来对象上传后
+通过 HTTP 206/Range 审计，资产注册阶段才可以改为 `true`。生成器先写临时目录，完成 checksum 后原子改名；固定同一个
+`--generated-at-utc` 可得到相同内容和 SHA-256。
+
+输出目录包含每张表一个 JSONL、`manifest.json` 和 `SHA256SUMS.txt`。当前真实 v0.2.0
+物化行数为：`release_versions` 1、`import_runs` 1、`publications` 13、`assemblies` 20、
+`contigs` 47、`sources` 22、`source_accessions` 32、`samples` 21、`endpoints` 28,399、
+`source_annotations` 81,477、`genes` 0、`endpoint_gene_context` 0、`assets` 127。
+附表的 81,477 行来自按字段证据角色分组后的行：每个原始附表行可以产生多个
+`experimental_measurement`、`author_annotation`、`prediction_annotation` 或
+`curation_metadata` 行；字段值在各自的 `annotation_json` 中保留。每条行级
+`provenance_json` 只保留来源文件、行号、source record、endpoint evidence、未映射
+helper 列和必要的证据边界；标准角色已经由 `annotation_kind` 表示，不重复嵌入整组
+`field_roles`/`field_definitions`。`author_called_endpoint` 映射为
+`author_annotation` 时，行级 provenance 只保留一个紧凑的
+`original_evidence_roles` 映射。每个来源的完整字段字典、`fields.json` 摘要以及
+`source_annotations.tsv` 的摘要只在物化 `manifest.json` 的
+`annotation_field_provenance` 中登记一次。这样仍能联合 `annotation_json` 覆盖所有
+原始附表列，同时避免 81,477 行重复字段定义。`author_called_endpoint` 角色不会重复
+制造实验 endpoint；预测字段也不会改变核心表的 `evidence_class`。每个来源的原始
+附表表头都由测试与物化前检查覆盖，禁止静默丢列。
+
+当前真实 bundle 的 `source_annotations.jsonl` 约 77 MiB、总目录约 115 MiB，分别低于
+100 MiB 和 150 MiB 的回归阈值；旧实现把字段字典重复写入每条行级 provenance，单个
+附表文件约 248 MiB，因此体积阈值用于防止这一类可避免的元数据膨胀，而不是丢弃数据。
+
+JSONL 中带 `_ref` 的键是给下一阶段 writer 使用的自然键辅助列，不是 schema 中新增的
+物理列：例如 `source_id_ref`、`assembly_id_ref`、`contig_id_ref` 和 `sample_id_ref`。
+writer 应先解析这些键得到 PostgreSQL identity，再按外键顺序插入。核心 endpoint 的
+24 列原值全部保留；坐标三个整数转为 JSON 数字。当前物化的 `assets.asset_kind` 使用
+schema 已允许的 `bed`、`metadata`、`checksum` 等枚举；`source_annotations.tsv` 作为
+metadata asset，不添加 schema 没有的 `source_annotation` 枚举。`origin_status` 只存在
+bundle manifest 的 `asset_origin` 对象中，不写进 assets 行；source accession 的
+`ArrayExpress` 只是 URL/namespace 解释，不作为额外物理列。
+
+S1_002 仍为 `audit_only`：物化中保留 source/publication/assembly/accession 等审计行，
+但没有 endpoint、source annotation 或 JBrowse 资产入口。物化 manifest 记录 canonical
+release checksum、reference-contig registry checksum、表行数与表 checksum、自然键模式、
+origin 计划状态和 unresolved；`write_mode` 始终为 `not_written`。
 
 ## 测试
 

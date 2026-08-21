@@ -172,6 +172,13 @@ class CanonicalReleaseValidator:
         self._source_endpoints: dict[str, dict[str, dict[str, str]]] = {}
         self._source_annotations: dict[str, int] = {}
         self._annotation_end_ids: dict[str, set[str]] = {}
+        # Kept only for the validated read-only export interface.  The
+        # validator still uses the same rows for the foreign-key check; the
+        # materializer needs the original fields so it can build a lossless
+        # source_annotations JSON document without re-reading an unvalidated
+        # file.
+        self._source_annotation_rows: dict[str, list[dict[str, str]]] = {}
+        self._source_annotation_fields: dict[str, list[str]] = {}
         self._contigs: set[tuple[str, str]] = set()
         self._contig_max_positions: dict[tuple[str, str], int] = {}
         self._contig_source_ids: dict[tuple[str, str], set[str]] = {}
@@ -567,7 +574,10 @@ class CanonicalReleaseValidator:
         if name.endswith(".config.json"):
             return "config"
         if name == "source_annotations.tsv":
-            return "source_annotation"
+            # The SQL schema deliberately keeps source-specific rows in the
+            # metadata asset class; ``source_annotations`` is a table, not a
+            # separate asset_kind enum.
+            return "metadata"
         # manifest/fields/endpoints TSV and other small JSON/TSV files are
         # metadata in the database asset vocabulary.
         return "metadata"
@@ -837,6 +847,8 @@ class CanonicalReleaseValidator:
                 self._issue("annotation PMID 与 registry 不一致", source_id, path, number)
             if row.get("doi") and source_registry.get("doi") and row["doi"] != source_registry["doi"]:
                 self._issue("annotation DOI 与 registry 不一致", source_id, path, number)
+        self._source_annotation_fields[source_id] = list(fields)
+        self._source_annotation_rows[source_id] = rows
         self._source_annotations[source_id] = len(rows)
         self._annotation_end_ids[source_id] = {
             row.get("end_id", "") for row in rows if row.get("end_id", "")
@@ -1336,6 +1348,57 @@ class CanonicalReleaseValidator:
         }
         return plan
 
+    def export_snapshot(self) -> dict[str, Any]:
+        """Return a validated, read-only snapshot for downstream materializers.
+
+        This is intentionally the only public escape hatch for the canonical
+        rows.  It can only be called after :meth:`validate` has completed
+        successfully *and* the reference-contig provenance gate is satisfied.
+        Callers therefore cannot accidentally materialize a failed release or
+        one whose PostgreSQL ``contigs.length_bp`` values are unresolved.
+        The returned dictionaries/lists are deep copies so a caller cannot
+        mutate the validator's state and then re-use it as evidence.
+        """
+
+        report = getattr(self, "_last_report", None)
+        if report is None:
+            raise RuntimeError("validate() must be called before export_snapshot()")
+        if not report.ok:
+            raise ValueError("cannot export a snapshot from a failed canonical validation")
+        if not report.plan.get("postgresql_ready", False):
+            raise ValueError("cannot export a snapshot while PostgreSQL readiness is unresolved")
+        import copy
+
+        return copy.deepcopy(
+            {
+                "release": self._release,
+                "release_root": str(self.release_root),
+                "repo_root": str(self.repo_root),
+                "contig_registry_path": str(self.contig_registry_path),
+                "source_ids": sorted(self._source_manifests),
+                "source_manifests": self._source_manifests,
+                "registry_rows": self._registry_by_source,
+                "registry_manifests": self._registry_manifests,
+                "source_rows": self._source_rows,
+                "source_annotation_rows": self._source_annotation_rows,
+                "source_annotation_fields": self._source_annotation_fields,
+                "contig_registry": {
+                    f"{assembly}\t{contig}": row
+                    for (assembly, contig), row in self._contig_registry.items()
+                },
+                "contigs": sorted(self._contigs),
+                "samples": sorted(self._samples),
+                "verified_assets": self._verified_assets,
+                "declared_files": {
+                    source_id: {name: str(path) for name, path in files.items()}
+                    for source_id, files in self._declared_files.items()
+                },
+                "declared_file_sha256": self._declared_file_sha256,
+                "checksums": self.checksums,
+                "report": report.as_dict(),
+            }
+        )
+
     def validate(self) -> ValidationReport:
         release_path = self.release_root / "release_manifest.json"
         if not self._load_release():
@@ -1359,7 +1422,7 @@ class CanonicalReleaseValidator:
                 "input_checksums": self.checksums,
                 "unresolved": [],
             }
-            return ValidationReport(
+            report = ValidationReport(
                 summary,
                 {
                     "write_mode": "not_written",
@@ -1368,6 +1431,8 @@ class CanonicalReleaseValidator:
                 },
                 self.issues,
             )
+            self._last_report = report
+            return report
         self._load_registry()
         sources = self._release.get("sources", {})
         # Do not let JSON object insertion order affect the import plan.
@@ -1502,7 +1567,9 @@ class CanonicalReleaseValidator:
             "input_checksums": dict(sorted(self.checksums.items())),
             "unresolved": list(plan.get("unresolved", [])),
         }
-        return ValidationReport(summary, plan, self.issues)
+        report = ValidationReport(summary, plan, self.issues)
+        self._last_report = report
+        return report
 
 
 def validate_release(
