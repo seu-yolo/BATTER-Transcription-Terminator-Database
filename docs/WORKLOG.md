@@ -29,11 +29,23 @@
 
 ### Cloudflare 状态与边界
 
-`CI=1 npx wrangler whoami` 非交互检查明确为 unauthenticated；没有创建远程 D1、没有部署
-Worker、没有线上 URL。最短人工步骤是用户运行 `npx wrangler login`，之后按
-`docs/v0.3/deployment.md` 创建免费/preview D1、填入未提交 database id 并部署。所有本地
-`.wrangler` cache 和生成 SQL 都是临时物，不进入 Git；HF 固定 revision 与 164/164 audit
-证据保持不变。
+`CI=1 npx wrangler whoami` 已在非交互模式确认认证成功。远程免费/preview D1
+`bted-catalogue-v03-preview` 已创建并按 schema、元数据、资产、轨道和 endpoints 顺序批量
+导入；实际计数为 1 release、13 publications、20 assemblies、49 contigs、22 sources、32
+source accessions、22 tracks、211 assets（164 public）和 28,399 endpoints，远程数据库大小
+为 32.78 MB。Worker + Static Assets 已部署到
+`https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`。
+
+线上 smoke 已覆盖 health/stats/catalogue/sources/assemblies/endpoints/augmentation、source/
+assembly/endpoint detail、动态 JBrowse config、公开 FASTA/BED HEAD 200 和单 Range 206、
+同源 `remote-data` alias；未知/private asset 返回 404，任意 `?url=` 返回 400。首页、
+`sources.html`、`catalog.html`、`accession-range-demo.html` 跟随 clean-path 重定向后均为
+非空 200，页面未发现旧 localhost/API 入口。当前 URL 仍是 developer preview，不是正式
+v0.3.0 release；workers.dev 发布提示过 subdomain 注册，但当前 URL 已可访问。
+
+所有本地 `.wrangler` cache 和生成 SQL 都是临时物，不进入 Git；HF 固定 revision 与 164/164
+audit 证据保持不变。FastAPI/PostgreSQL/Next.js 保留为 future/alternative，未创建或依赖
+Neon/Render/Vercel 资源。
 
 ## 2026-08-21 —— BTED v0.3 第一里程碑：架构契约与数据库骨架
 

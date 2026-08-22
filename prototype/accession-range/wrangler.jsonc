@@ -11,7 +11,7 @@
     {
       "binding": "BTED_DB",
       "database_name": "bted-catalogue-v03-preview",
-      "database_id": "replace-after-d1-create"
+      "database_id": "fed55acc-5093-44e7-b672-f1e0a347ba5d"
     }
   ],
   "vars": {

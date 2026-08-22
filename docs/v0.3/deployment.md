@@ -92,23 +92,36 @@ key 和未列入 allowlist 的 origin 必须被拒绝。实际本地 smoke 结�
 sources/assemblies/endpoints/augmentation/JBrowse 均 200；FASTA 与 BED HEAD 为 200、单字节
 Range 为 206；任意 origin 尝试为 400；缺 public FASTA+FAI 的 assembly 返回 404。
 
-## Remote Cloudflare gate
+## Remote Cloudflare preview
 
-本轮只做了短的非交互检查：
+本轮已完成短的非交互认证检查、D1 创建/导入和 Worker 部署：
 
 ```bash
 CI=1 npx wrangler whoami
 ```
 
-当前结果是 `You are not authenticated`，因此没有创建远程 D1、没有部署 Worker，也没有
-产生线上 URL。最短人工步骤是用户在自己的终端运行一次 `npx wrangler login` 完成浏览器
-授权，然后重新运行 `npx wrangler whoami`。登录后才可以在免费/preview 范围内：
+认证成功；远程 D1 名称为 `bted-catalogue-v03-preview`，已导入并查询到 1 release、13
+publications、20 assemblies、49 contigs、22 sources、32 accessions、22 tracks、211
+assets（164 public）、28,399 endpoints 和 19 augmentation sources。远程 D1 实测库大小
+约 32.78 MB，D1 行状态为 `v0.2.0/preview`，没有执行 promotion。
 
-1. `npx wrangler d1 create bted-catalogue-v03-preview`；将返回的 database id 写入本地
-   未提交配置（或用部署环境注入），再运行上面的远程 schema/import；
-2. `npx wrangler deploy --config prototype/accession-range/wrangler.jsonc`；
-3. 用部署输出的 Worker URL 重跑同一组 HTTP、JBrowse 和 Range smoke，并把 URL、导入计数
-   和审计结果补入 `WORKLOG.md`/`HANDOFF.md`。
+Worker + Static Assets 已部署到：
 
-不要在 Git、shell history、日志或聊天中粘贴 API token、密码或带凭据的 URL；不要使用
-`--remote`，直到 D1 id 已由登录用户明确创建并核对为目标 preview 数据库。
+`https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`
+
+线上 smoke 已验证 health/stats/catalogue/sources/assemblies/endpoints/augmentation、
+source/assembly/endpoint detail、JBrowse config 均 `200`；固定 HF FASTA/BED HEAD 为
+`200`，单字节 Range 为 `206` 且返回 1 byte；`remote-data` alias 为 `200`；unknown/private
+asset 为 `404`；任意 `?url=` 为 `400`。Worker Static Assets 的 `.html` 入口会返回
+Cloudflare clean-URL `307`，浏览器跟随后 `/sources`、`/catalog`、`/accession-range-demo`
+等科研页面均 `200` 且内容非空；页面没有 localhost/旧 API 引用。
+
+部署命令使用：
+
+```bash
+npx wrangler deploy --config prototype/accession-range/wrangler.jsonc
+```
+
+后续若需修改 preview，仍需先用非交互 `CI=1 npx wrangler whoami` 检查认证；不要在 Git、
+shell history、日志或聊天中粘贴 API token、密码或带凭据的 URL。不要对该 preview 使用
+DROP/TRUNCATE/DELETE，也不要把它写成 canonical v0.3.0 release。

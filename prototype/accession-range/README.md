@@ -95,13 +95,12 @@ INSERT batches and lets D1 handle statement execution. The final local smoke cou
 
 ## Remote deployment boundary
 
-The fixed HF revision has already passed 164/164 HEAD + single-byte Range audit. The
-non-interactive `CI=1 npx wrangler whoami` check currently reports unauthenticated, so no
-remote D1 or Worker URL was created. A human must run `npx wrangler login`, create the free
-preview D1, fill the local/private `database_id`, run the same batches remotely, and deploy
-with `npx wrangler deploy --config prototype/accession-range/wrangler.jsonc`. Do not put
-tokens/passwords in Git or logs. See [`docs/v0.3/deployment.md`](../../docs/v0.3/deployment.md)
-for the full sequence.
+The fixed HF revision has already passed 164/164 HEAD + single-byte Range audit. The remote
+preview is live at
+`https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`, backed by the
+`bted-catalogue-v03-preview` D1 database. Do not put tokens/passwords in Git or logs. See
+[`docs/v0.3/deployment.md`](../../docs/v0.3/deployment.md) for the measured counts and smoke
+results.
 
 FastAPI/PostgreSQL/Next.js code remains a future/alternative path; Render/Neon/Vercel are not
 current deployment dependencies.

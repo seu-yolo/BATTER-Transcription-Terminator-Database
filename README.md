@@ -28,8 +28,8 @@ v0.2.0 保留固定的 24 列核心端点表，并增加通过 `end_id` 关联�
 
 ## BTED v0.3 developer preview
 
-当前分支 `feature/bted-v0.3-dynamic-service` 提供尚未远程上线的 v0.3 Cloudflare developer
-preview。当前部署路径是 Cloudflare Worker + D1 + Worker Static Assets：它复用现有 `site/`
+当前分支 `feature/bted-v0.3-dynamic-service` 提供已部署但仍为 preview 的 v0.3 Cloudflare
+developer preview。当前部署路径是 Cloudflare Worker + D1 + Worker Static Assets：它复用现有 `site/`
 静态 UX，提供 catalogue/source/assembly/endpoint/augmentation API、动态 JBrowse config 和
 登记 HF asset 的同源 Range 代理。现有 FastAPI/PostgreSQL/Next.js 组件仍保留为
 future/alternative，以 canonical release 和登记资产为真源，不改写 v0.2 发布目录。
@@ -67,12 +67,12 @@ canonical `release_version=v0.2.0`，不是一个新的 `v0.3.0` 数据 release�
 [`data/registry/remote_asset_audit.v0.2.0-hf.json`](data/registry/remote_asset_audit.v0.2.0-hf.json)，
 其 SHA-256 为 `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
 
-Cloudflare 本地 D1 已完成真实批次导入（1 release、13 publications、20 assemblies、49
-contigs、22 sources、32 accessions、22 tracks、211 assets、28,399 endpoints），Worker
-HTTP/HEAD/Range/JBrowse smoke 已通过；本地 D1 state 在 smoke 时约 68 MB。远程 Cloudflare
-只因 `CI=1 npx wrangler whoami` 未登录而未创建资源/URL，最短人工步骤见
-[`docs/v0.3/deployment.md`](docs/v0.3/deployment.md)。轻量 JBrowse shell 仍需单独打包，
-`endpoint_gene_context` 尚未定义或计算。旧的 mutable
+Cloudflare D1 `bted-catalogue-v03-preview` 已完成真实批次导入（1 release、13 publications、
+20 assemblies、49 contigs、22 sources、32 accessions、22 tracks、211 assets、28,399
+endpoints；164 public assets、19 augmentation sources），远程库约 32.78 MB。Worker 已部署
+到 [`bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`](https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev)，
+线上 HTTP/HEAD/Range/JBrowse/static-page smoke 已通过。它仍是 preview，不是正式 v0.3.0
+release；轻量 JBrowse shell 仍需单独打包，`endpoint_gene_context` 尚未定义或计算。旧的 mutable
 `resolve/main` verified bundle 不作为最终交付；本地 pinned verified bundle 是临时交接物，
 不进入 Git。
 

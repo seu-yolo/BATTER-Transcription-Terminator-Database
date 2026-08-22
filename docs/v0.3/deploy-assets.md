@@ -132,9 +132,9 @@ release.
 - Generate and import the verified bundle into the Cloudflare D1 preview projection;
   the current local D1 smoke is documented in [`deployment.md`](deployment.md). This
   remains a preview projection, not a PostgreSQL promotion or a new data release.
-- Complete the Cloudflare remote deployment only after a human performs the short
-  `npx wrangler login` step; the non-interactive `wrangler whoami` check is currently
-  unauthenticated, so no remote D1 or Worker URL exists in this handoff.
+- Cloudflare remote preview deployment is complete at
+  `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`; remote D1
+  import counts and online HEAD/206/API smoke are recorded in [`deployment.md`](deployment.md).
 - Render/Neon/Vercel are future/alternative deployment paths for the retained
   FastAPI/PostgreSQL/Next.js code and are intentionally not part of this route.
 - Package and separately accept the lightweight JBrowse shell/configuration.

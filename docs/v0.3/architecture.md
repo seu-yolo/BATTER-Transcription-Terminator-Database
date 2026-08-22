@@ -2,8 +2,8 @@
 
 **状态：** v0.3.0 Cloudflare developer preview（canonical bundle → D1 import generator、
 Cloudflare Worker API、Worker Static Assets、同源 asset proxy、动态 JBrowse config 已实现；
-Hugging Face public assets 已在固定 revision 完成远端 Range 审计；远程 Cloudflare deployment
-因 Wrangler 未登录尚未执行）
+Hugging Face public assets 已在固定 revision 完成远端 Range 审计；Worker/D1 已部署到免费
+preview URL，尚不是正式数据 release）
 **适用版本：** v0.2.0 与 v0.3.0 并行
 **范围：** 当前仓库已经审计的 BATTER S1 内部数据
 
@@ -157,10 +157,10 @@ GFF gene rows 的物化与批量写入。当前计数为 22 个来源（21 publi
 20 个 release assembly records、19 个去重 published browser assemblies、28,399 个
 endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public objects）。
 
-这些结果和测试是本地/隔离环境验证；Hugging Face 的真实固定 revision 远端证据另由
+这些结果和测试包含本地与 Cloudflare preview 实测；Hugging Face 的真实固定 revision 远端证据另由
 `data/registry/remote_asset_audit.v0.2.0-hf.json` 保存（164/164 HEAD 200 + Range 206，
 164 对象共 126,280,212 bytes）。该证据对应 canonical `release_version=v0.2.0`，不代表
-已发布 `v0.3.0` 数据。D1 local import 与 Worker HTTP smoke 已完成；远程 Cloudflare deployment
-仍等待 `wrangler whoami` 登录。轻量 JBrowse shell 仍是独立后续工作，`endpoint_gene_context`
+已发布 `v0.3.0` 数据。D1 local/remote import 与 Worker HTTP smoke 已完成；线上 preview URL
+为 `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`。轻量 JBrowse shell 仍是独立后续工作，`endpoint_gene_context`
 尚未定义或计算。使用 `resolve/main` 生成的旧 verified bundle 已被固定 revision 结果取代，
 不作为最终交付。

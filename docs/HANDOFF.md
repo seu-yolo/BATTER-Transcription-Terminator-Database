@@ -12,16 +12,18 @@ D1 batches 的脚本、完整 catalogue D1 schema、Cloudflare Worker API、Work
 28,399 个 endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public
 objects）。本地 Wrangler 4.125 D1 实际导入为 1 release、13 publications、20 assemblies、
 49 contigs、22 sources、32 accessions、22 tracks、211 assets 和 28,399 endpoints；local
-SQLite state（含 WAL）约 68 MB。Worker 的有界 HTTP smoke 与固定 HF HEAD/Range smoke 已通过。
-Hugging Face public object handoff 已在固定 revision 完成 164/164 HEAD 200 + Range 206 审计；
-远程 Cloudflare 仍因 `CI=1 npx wrangler whoami` 未登录而未创建资源/URL，因此不能把 v0.3
-写成已上线。
+SQLite state（含 WAL）约 68 MB。远程 preview D1 `bted-catalogue-v03-preview` 实际导入同一
+计数，数据库大小为 32.78 MB。Worker 已部署到
+`https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`；线上 API、静态
+页面、JBrowse、HEAD/Range 和拒绝规则 smoke 均已通过。Hugging Face public object handoff
+已在固定 revision 完成 164/164 HEAD 200 + Range 206 审计；当前仍是免费 preview，不宣称
+正式 v0.3.0 release。
 
 **最新 handoff 参考：** `96577c8`、`7dbd580`。
 
-**当前验证：** Python 全量测试 126/126 PASS（此前基线）；Worker `node --check`、本地 D1
-真实导入、HTTP/Range/JBrowse smoke 和 `git diff --check` 正在本轮收口；frontend
-`pnpm run check-contract`、`pnpm run build` 已在此前基线通过。真实固定 revision 证据保存在
+**当前验证：** Python 全量测试 127/127 PASS；Worker `node --check`、本地/远程 D1 真实导入、
+HTTP/Range/JBrowse smoke 和 `git diff --check` 已通过；frontend `pnpm run check-contract`、
+`pnpm run build` 和站点 validator 也已通过。真实固定 revision 证据保存在
 `data/registry/remote_asset_audit.v0.2.0-hf.json`，SHA-256 为
 `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
 
@@ -42,9 +44,17 @@ Hugging Face public object handoff 已在固定 revision 完成 164/164 HEAD 200
   JBrowse；固定 HF FASTA/BED HEAD 为 200、单 Range 为 206、同源 `remote-data` alias 可用，
   任意 `?url=` 为 400，private assembly（无 public FASTA+FAI）为 404。Detail 路由最初漏包
   `Response`、assembly browser flag 未包含 source BED，均已修复。
-- `CI=1 npx wrangler whoami` 返回未认证；没有创建远程 D1、部署 Worker 或产生线上 URL。
-  用户只需运行一次 `npx wrangler login`，再按 `docs/v0.3/deployment.md` 创建免费/preview
-  D1、填入未提交 database id、导入批次并部署。
+- `CI=1 npx wrangler whoami` 已在非交互模式确认认证成功；远程 D1
+  `bted-catalogue-v03-preview` 已按 schema 和顺序批量导入，远程计数为 1 release、13
+  publications、20 assemblies、49 contigs、22 sources、32 accessions、22 tracks、211
+  assets（164 public）和 28,399 endpoints，远程 D1 大小约 32.78 MB。
+- Worker + Static Assets 已部署到
+  `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`。线上验证覆盖
+  `/api/health`、stats、catalogue、sources、assemblies、endpoints、augmentation、source/
+  assembly/endpoint detail、动态 JBrowse config、公开 FASTA/BED 的 HEAD 200 和单 Range
+  206、`remote-data` alias；未知/private asset 返回 404，任意 `?url=` 返回 400。首页、
+  `sources.html`、`catalog.html`、`accession-range-demo.html`（跟随 clean-path 重定向后）
+  均返回非空 200，页面未发现旧 localhost/API 入口。
 
 ## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
 
@@ -548,13 +558,16 @@ generator/schema、Cloudflare Worker catalogue API、同源 asset proxy、动态
 Next.js pages、客户端动态 Explore 和 GFF-derived gene query。真实数据计数为 22 个来源
 （21 published + 1 audit-only）、20 个 release assembly records、19 个去重 published browser
 assemblies、28,399 个 endpoints、95,437 个 genes，以及 211 个 materialized assets，其中
-164 个 public objects 已在上述固定 HF revision 完成远端验证。Cloudflare local D1 与 Worker
-smoke 已完成；报告位于 `data/registry/remote_asset_audit.v0.2.0-hf.json`；local simulated
-audit 仍不替代该真实 pinned-origin evidence。
+164 个 public objects 已在上述固定 HF revision 完成远端验证。Cloudflare local D1、远程
+preview D1 与线上 Worker smoke 已完成；报告位于
+`data/registry/remote_asset_audit.v0.2.0-hf.json`；local simulated audit 仍不替代该真实
+pinned-origin evidence。
 
 剩余事项仅包括：
 
-- Wrangler 当前未登录，尚未创建远程 D1、部署 Worker 或产生线上 URL；
+- 当前 Cloudflare Worker 仍为免费 developer preview，尚未配置自定义域名，也不应视为正式
+  v0.3.0 release；workers.dev 发布曾提示需要注册 subdomain，但当前 URL 已可访问并通过
+  线上 smoke；
 - FastAPI/PostgreSQL/Next.js alternative path 没有真实 PostgreSQL/container import smoke
   （本机没有 Docker/PostgreSQL）；
 - 需要单独打包和验收轻量 JBrowse shell；
