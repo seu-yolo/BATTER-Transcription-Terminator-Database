@@ -30,10 +30,18 @@
 - `node --check site/assets/browser-wrapper.js site/assets/accession-range-demo.js prototype/accession-range/src/worker.js`：PASS。
 - `git diff --check`：PASS。
 
-### 尚未执行
+### Git、部署与线上验收
 
-- 本轮没有 commit、push 或部署；需要主代理在本地/线上启动后做真实 iframe、source selector、
-  raw link、BED link 和 `loc/session` 深链接 smoke。JBrowse 内部 bundle 仍按原始文件保留。
+- 实现提交为 `91820e1`，已推送到 `personal/feature/bted-v0.3-dynamic-service`；Cloudflare
+  developer preview 已更新，Worker version ID 为 `679cff52-8779-4bdd-9346-63d180278b53`。
+- 线上从共享 assembly `GCF_000739105.1` 的 **Open genome browser** 进入 wrapper：默认展示
+  S1_007/S1_013 各自的 PubMed、DOI、Dataset details 和去重后的 ENA accession；iframe 正常
+  加载 reference annotation 与两条独立 endpoint track。
+- 切换到 `BATTER_S1_007` 后，页面显示 Publication、PubMed、DOI、ENA、Download BED 和
+  Dataset details；JBrowse 只显示 reference annotation 与 S1_007 endpoint track。浏览器
+  console 为 0 error / 0 warning，BED asset HEAD 返回 200、`Accept-Ranges: bytes`。
+- `loc`、`session`、`tracks`、`highlight` 和 `assembly` 的代码级透传已由 focused test 覆盖；
+  本轮没有人为构造新的 session snapshot。JBrowse 内部 bundle 仍按原始文件保留。
 
 ## 2026-08-22–23 —— v0.3 Cloudflare Worker + D1 catalogue preview
 

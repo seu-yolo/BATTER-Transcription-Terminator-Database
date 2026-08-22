@@ -4,7 +4,7 @@
 
 **当前分支：** `feature/bted-v0.3-dynamic-service`
 
-## 2026-08-23 JBrowse wrapper 信息栏（待主代理审核）
+## 2026-08-23 JBrowse wrapper 信息栏（已部署验收）
 
 当前工作树新增一个不修改 JBrowse 核心 bundle 的用户入口：`site/browser.html`。它从
 `site/data/assemblies.json` 读取 assembly/source 元数据，把 organism、assembly、source
@@ -23,11 +23,13 @@ assembly 的 All source tracks 视图还直接列出每个来源的 PubMed、DOI
 浏览器入口。每个可发布 source 的静态 track metadata 已补 DOI/DOI URL、raw accession、
 record URL 和动态 Worker BED asset URL；Worker 动态 track metadata 增加 `BED_download`。
 
-本轮没有 commit/push/deploy。Focused wrapper test 为 5/5 PASS，三个 JavaScript 文件
-`node --check` 通过，`git diff --check` 通过。主代理接手后需要在实际运行的 Worker/static
-site 上验证：wrapper 载入 iframe、多个 source 切换、Publication/DOI/raw/BED/record 链接、
-以及 `loc/session` 深链接。若部署到 GitHub Pages 而不是 Worker Static Assets，还需额外确认
-动态 API/asset 的跨源 CORS；当前 wrapper 元数据本身来自静态 catalogue，不依赖该请求。
+实现提交 `91820e1` 已推送并部署到现有 Cloudflare developer preview；Worker version ID 为
+`679cff52-8779-4bdd-9346-63d180278b53`。全量 unittest 为 132 PASS、3 个可选 FastAPI runtime
+skip，站点 validator、三个 JavaScript `node --check` 与 `git diff --check` 均通过。真实线上
+Playwright 已验证共享 assembly wrapper、两篇论文链接、ENA、source selector、单来源
+JBrowse、BED HEAD 200 以及 console 0 error / 0 warning。`loc/session` 参数透传有 focused test；
+如果未来改回 GitHub Pages 独立静态域名，需要另行提供 API CORS，本轮生产路径仍是 Worker
+Static Assets 与 API 同源。
 
 **当前里程碑：** v0.3.0 Cloudflare developer preview 已增加从固定 HF verified bundle 生成
 D1 batches 的脚本、完整 catalogue D1 schema、Cloudflare Worker API、Worker Static Assets、
