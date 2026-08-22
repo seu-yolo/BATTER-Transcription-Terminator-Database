@@ -410,6 +410,8 @@ async function jbrowseConfig(request, env, release, accession, sourceId) {
       raw_data_accessions: rawAccessions.map((item) => item.accession).join(", "),
       raw_data_links: rawAccessions.map((item) => item.external_url).filter(Boolean).join(" ; "),
       BTED_record: new URL(`/records/${encodeURIComponent(source.source_id)}.html`, request.url).href,
+      BED_download: assetUrl(request, bed.asset_key),
+      BED_asset_key: bed.asset_key,
       release_version: release.release_version,
     };
     for (const [strand, label] of [["forward", "+"], ["reverse", "-"]]) {

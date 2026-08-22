@@ -190,7 +190,15 @@ def record_download_url(source_id: str, filename: str, prefix: str = "") -> str:
 
 
 def jbrowse_href(config_url: str, prefix: str = "") -> str:
-    return f"{prefix}jbrowse/index.html?config={quote(config_url, safe='')}"
+    """Return the user-facing browser wrapper URL.
+
+    The bundled JBrowse application remains at ``jbrowse/index.html``.  Public
+    catalogue links go through the small wrapper so users see the organism,
+    source, publication, raw accession and download links before entering the
+    browser.  Keeping this in the generator makes source/assembly/record links
+    consistent instead of maintaining them in individual HTML files.
+    """
+    return f"{prefix}browser.html?config={quote(config_url, safe='')}"
 
 
 def browser_reading_guide(assays: list[str]) -> str:
@@ -359,9 +367,18 @@ def build_assemblies_json(grouped: dict[str, list[dict[str, object]]]) -> dict[s
                 "publication_year": record["year"],
                 "pmid": source["pmid"],
                 "publication_url": str(manifest.get("pubmed_url", "")),
+                "doi": source.get("doi", ""),
+                "doi_url": str(manifest.get("doi_url", "")),
+                "pmc": source.get("pmc", ""),
+                "pmc_url": str(manifest.get("pmc_url", "")),
                 "assay": source["assay_family"],
                 "raw_data_accession": str(source["raw_data_accessions"]),
                 "raw_data_url": str(manifest.get("raw_data_url", "")),
+                "bed_url": (
+                    f"{BTED_PREVIEW_ORIGIN}/api/assets/"
+                    f"{quote(f'v0.2.0--source-{record['source_id']}--endpoints-bed', safe='')}"
+                    if record["release_status"] != "audit_only" else None
+                ),
                 "evidence_class": record["evidence_class"],
                 "record_count": record["record_count"],
                 "record_url": f"records/{record['source_id']}.html",

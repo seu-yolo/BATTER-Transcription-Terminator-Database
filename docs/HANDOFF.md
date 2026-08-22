@@ -4,6 +4,31 @@
 
 **当前分支：** `feature/bted-v0.3-dynamic-service`
 
+## 2026-08-23 JBrowse wrapper 信息栏（待主代理审核）
+
+当前工作树新增一个不修改 JBrowse 核心 bundle 的用户入口：`site/browser.html`。它从
+`site/data/assemblies.json` 读取 assembly/source 元数据，把 organism、assembly、source
+selector、Publication/PubMed/DOI、raw accession、Download BED 和 Dataset details 放在
+JBrowse iframe 上方。`site/assets/browser-wrapper.js` 只把真正的 JBrowse 参数交给
+`site/jbrowse/index.html`，并透传 `loc`、`session`、`tracks`、`highlight` 和 `assembly`。
+
+wrapper 对 BTED `/api/assemblies/<accession>/jbrowse-config` 只使用当前页面 origin 重建
+config，避免 preview hostname 在同源 Worker 部署中造成跨域；外部 config 保持原地址。共享
+assembly 的 All source tracks 视图还直接列出每个来源的 PubMed、DOI 和 Dataset details，
+不要求用户先选 source。
+
+生成器 `scripts/build_v0_2_site.py` 已将 source、assembly、record 和 accession-search 的
+公开浏览器入口改为 `browser.html?config=...`；JBrowse 原始页面仍可直接用作内部 iframe
+入口。共享 `GCF_000739105.1` 的 S1_007/S1_013 仍为两个独立 source track，S1_002 没有
+浏览器入口。每个可发布 source 的静态 track metadata 已补 DOI/DOI URL、raw accession、
+record URL 和动态 Worker BED asset URL；Worker 动态 track metadata 增加 `BED_download`。
+
+本轮没有 commit/push/deploy。Focused wrapper test 为 5/5 PASS，三个 JavaScript 文件
+`node --check` 通过，`git diff --check` 通过。主代理接手后需要在实际运行的 Worker/static
+site 上验证：wrapper 载入 iframe、多个 source 切换、Publication/DOI/raw/BED/record 链接、
+以及 `loc/session` 深链接。若部署到 GitHub Pages 而不是 Worker Static Assets，还需额外确认
+动态 API/asset 的跨源 CORS；当前 wrapper 元数据本身来自静态 catalogue，不依赖该请求。
+
 **当前里程碑：** v0.3.0 Cloudflare developer preview 已增加从固定 HF verified bundle 生成
 D1 batches 的脚本、完整 catalogue D1 schema、Cloudflare Worker API、Worker Static Assets、
 登记 asset 的同源 GET/HEAD/Range 代理和动态 JBrowse config；现有 FastAPI/PostgreSQL/Next.js

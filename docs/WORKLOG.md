@@ -1,5 +1,40 @@
 # 工作日志
 
+## 2026-08-23 —— JBrowse user-facing information wrapper
+
+**范围：** 只调整浏览器入口和静态展示层；不修改 JBrowse bundle、canonical endpoint 数据、
+证据类别或资产内容。
+
+- 新增 `site/browser.html` 与 `site/assets/browser-wrapper.js`。公开的 source、assembly、
+  record 和 accession-search 入口现在先进入 wrapper，再由 wrapper 在同一页面上方展示
+  organism/strain、versioned assembly、source selector、Publication/PubMed/DOI、raw
+  accession、Download BED、Dataset details 和 Genomes/assembly 入口；下方 iframe 继续加载
+  原始 `site/jbrowse/index.html`。
+- 同一 assembly 的多个 source 使用 `All source tracks` 或 source selector 切换；source_id
+  被写回 JBrowse config query，来源仍是独立轨道，不生成共识。`loc`、`session`、`tracks`、
+  `highlight` 和 `assembly` query 会传递给 iframe，wrapper 切换时保留深链接状态。
+- 对 `/api/assemblies/<accession>/jbrowse-config` 只在 wrapper 中按当前页面 origin 重建
+  config URL，避免静态生成时留下的 preview hostname 造成同源 Worker 部署的 CORS；外部、非
+  BTED config 不做改写。共享 assembly 的全部来源视图直接列出每个 source 的 PubMed、DOI
+  和 Dataset details，raw accession 仍保留且相同 accession 只显示一次。
+- `site/data/assemblies.json` 的每个可发布 source track 增加 DOI/DOI URL、PMCID URL 和
+  登记 BED asset URL；共享组装 `GCF_000739105.1` 的 S1_007/S1_013 已分别核对。S1_002
+  仍没有 source selector、BED 或浏览器入口。
+- Worker 动态 JBrowse track metadata 同步加入 `BED_download` 与 `BED_asset_key`，因此
+  wrapper 的 Download BED 链接指向已登记同源资产，不复制大文件到网页。
+
+### 验证
+
+- `python3 scripts/build_v0_2_site.py`：20 个 assembly 页面、22 个 source 页面重新生成。
+- `python3 -m unittest -v tests/test_bted_browser_wrapper.py`：5/5 PASS。
+- `node --check site/assets/browser-wrapper.js site/assets/accession-range-demo.js prototype/accession-range/src/worker.js`：PASS。
+- `git diff --check`：PASS。
+
+### 尚未执行
+
+- 本轮没有 commit、push 或部署；需要主代理在本地/线上启动后做真实 iframe、source selector、
+  raw link、BED link 和 `loc/session` 深链接 smoke。JBrowse 内部 bundle 仍按原始文件保留。
+
 ## 2026-08-22–23 —— v0.3 Cloudflare Worker + D1 catalogue preview
 
 **分支：** `feature/bted-v0.3-dynamic-service`

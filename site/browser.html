@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="BTED genome browser with source and publication information">
+  <title>Genome browser · BTED</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css?v=20260823-browser-wrapper">
+</head>
+<body data-browser-wrapper>
+  <header class="site-header"><div class="header-inner">
+    <a class="brand" href="index.html"><span class="brand-mark">BTED</span><span class="brand-name">Bacterial Transcript 3′ End Database</span></a>
+    <nav class="site-nav" aria-label="Browser navigation">
+      <a href="sources.html">Genomes</a><a href="catalog.html">Download</a><a href="about.html">About</a>
+    </nav>
+  </div></header>
+
+  <main class="browser-page">
+    <section class="browser-info" aria-labelledby="browser-heading">
+      <div class="browser-info-heading">
+        <div>
+          <p class="eyebrow">BTED genome browser</p>
+          <h1 id="browser-heading" data-browser-organism>Loading genome…</h1>
+          <p class="browser-assembly"><a data-browser-assembly-link href="#"><code data-browser-assembly>—</code></a><span data-browser-reference>—</span></p>
+        </div>
+        <div class="browser-info-actions"><a class="button" data-browser-genome href="sources.html">Genome details</a><a class="button" href="sources.html">All genomes</a></div>
+      </div>
+      <div class="browser-source-row">
+        <label for="browser-source-select">Source track</label>
+        <select id="browser-source-select" data-browser-source aria-label="Select source track"></select>
+        <span class="browser-source-note" data-browser-source-note>Sources sharing an assembly remain independent tracks.</span>
+      </div>
+      <div class="browser-links" data-browser-links aria-label="Study links">
+        <span class="browser-links-label" data-browser-study>Study links</span>
+        <a data-browser-paper target="_blank" rel="noopener" hidden>Publication</a>
+        <a data-browser-pubmed target="_blank" rel="noopener" hidden>PubMed</a>
+        <a data-browser-doi target="_blank" rel="noopener" hidden>DOI</a>
+        <span class="browser-study-links" data-browser-studies hidden aria-label="Studies sharing this assembly"></span>
+        <span class="browser-raw-links" data-browser-raw></span>
+        <a data-browser-bed target="_blank" rel="noopener" hidden>Download BED</a>
+        <a data-browser-record hidden>Dataset details</a>
+      </div>
+      <p class="browser-status" data-browser-status role="status">Preparing the browser view…</p>
+    </section>
+    <section class="browser-frame-panel" aria-label="Interactive genome browser">
+      <iframe data-browser-frame title="BTED interactive genome browser" loading="eager"></iframe>
+      <p class="browser-frame-note">Use the JBrowse controls below to search, zoom and inspect independent source tracks. The links above describe the selected source.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer"><div class="footer-inner"><span>BTED v0.2.0</span><span>Source-preserving genome view</span><a href="https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database" target="_blank" rel="noopener">GitHub</a></div></footer>
+  <script src="assets/browser-wrapper.js?v=20260823-browser-wrapper"></script>
+</body>
+</html>

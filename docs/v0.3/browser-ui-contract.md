@@ -42,6 +42,18 @@ GFF-derived annotation，不计算或解释 `endpoint_gene_context`。
 可以打开 source/audit 详情并显示 publication、raw accession 和限制，但没有 endpoint
 record、endpoint download 或 JBrowse deep link；不能用“暂无数据”的空卡片伪造这些入口。
 
+### 2.1 Public browser entry
+
+The public catalogue links to a lightweight `browser.html` wrapper. It displays the
+organism/strain, versioned assembly, selected source, publication/raw-accession links,
+BED download and dataset details above the embedded JBrowse application. The bundled
+`jbrowse/index.html` remains an internal iframe entry and is not modified by the wrapper.
+When several sources share one assembly, the wrapper offers an “All source tracks” view
+and a source selector; source tracks remain independent. `loc`, `session`, `tracks`,
+`highlight` and `assembly` query state is forwarded to the iframe so shared deep links do
+not lose their position or view state. S1_002 stays outside this entry because it is
+metadata/audit-only.
+
 ## 3. 基因轨道的缩放语义
 
 基因显示随视窗从远到近按确定性层级切换，不在远景绘制不可读的长标签：
