@@ -1,7 +1,7 @@
 # BTED v0.3 API 契约
 
-**前缀：** `/api/v1`
-**状态：** v0.3.0 D2：只读 FastAPI 查询层、同源资产 GET/HEAD/单 Range 代理与 assembly 级动态 JBrowse 配置已实现；真实数据库部署仍未完成
+**前缀：** `/api/v1`（FastAPI alternative path）
+**状态：** v0.3.0 D2：只读 FastAPI 查询层、同源资产 GET/HEAD/单 Range 代理与 assembly 级动态 JBrowse 配置已实现；该契约保留为 future/alternative。当前 Cloudflare Worker preview 使用 `/api`，详见 [`deployment.md`](deployment.md)。
 **默认数据：** 当前 `published` release；所有响应显式返回 `release_version`
 
 ## 1. 通用规则

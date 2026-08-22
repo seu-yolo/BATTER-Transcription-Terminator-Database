@@ -1,15 +1,25 @@
-# BTED accession + Range delivery prototype
+# BTED Cloudflare catalogue prototype
 
-This directory is a deployment prototype, not a new biological dataset. It uses the already curated `GCF_000739105.1` records from `BATTER_S1_007` and `BATTER_S1_013` to test a scalable delivery contract:
+This directory is the current Cloudflare Worker + D1 + Worker Static Assets preview, not
+a new biological dataset. It extends the earlier one-assembly accession/Range experiment
+to the complete BTED catalogue without changing the canonical v0.2 release or endpoint
+interpretation. The request path is:
 
 ```text
-assembly accession
-  -> D1 metadata lookup
-  -> same-origin /api/remote-data/{asset_key}
-  -> byte-Range request to an allowlisted object store
+verified materialized bundle
+  -> scripts/generate_bted_d1.py
+  -> D1 preview projection
+  -> Cloudflare Worker /api/*
+  -> registered HF object key + same-origin GET/HEAD/Range
+  -> existing site/ static UX
 ```
 
-The endpoint coordinates, evidence classes and public BED files are unchanged.
+The preview covers 22 sources (21 `published_standardized` + 1 `audit_only`), 20 release
+assembly records, 49 contigs, 32 source accessions, 22 tracks, 28,399 endpoints and 211
+registered assets (164 public). Source annotations remain HF/metadata assets; genes are
+omitted from D1 because the current catalogue UI/API does not query them. The D1 row is
+`release_version=v0.2.0, status=preview`: a rebuildable query projection, not promotion or
+a new `v0.3.0` dataset.
 
 ## Why this assembly
 
@@ -24,11 +34,13 @@ The two existing release copies of FASTA, FAI, gene GFF3 and TBI are byte-identi
 
 ## Files
 
-- `registry.json`: checksum-frozen local object map used by the demo server;
-- `schema.sql`: proposed Cloudflare D1 schema;
-- `seed.sql`: one-assembly pilot rows;
-- `src/worker.js`: production-shaped Worker routes;
-- `wrangler.jsonc`: deployment skeleton; real D1 and Hugging Face identifiers are intentionally unset.
+- `registry.json`: checksum-frozen local object map from the historical one-assembly pilot;
+- `schema.sql`: complete Cloudflare D1 preview schema;
+- `seed.sql`: historical pilot rows, not the catalogue import source;
+- `src/worker.js`: catalogue API, static fallback and allowlisted HF proxy;
+- `wrangler.jsonc`: current Worker, D1 binding, static `site/` directory and pinned HF origin;
+- `../../scripts/generate_bted_d1.py`: deterministic batch generator from the verified bundle.
+  Generated SQL belongs in `/private/tmp` or another external staging directory, not Git.
 
 ## Local demonstration
 
@@ -61,13 +73,35 @@ Builds one reference assembly plus independent experiment tracks. All data locat
 
 Only registered asset keys are accepted. The route forwards `Range` and conditional headers to the allowlisted origin and preserves `206`, `Content-Range`, `Accept-Ranges`, `ETag`, `Content-Length` and content type. It does not accept an arbitrary `?url=` parameter and therefore is not an open proxy.
 
-## Production steps not performed in this branch
+## Complete catalogue local import
 
-1. Create the Cloudflare D1 database and apply `schema.sql` / reviewed seed rows.
-2. Upload checksum-verified objects to an approved Hugging Face dataset repository or another object store.
-3. Replace the placeholder D1 ID and `HF_RESOLVE_BASE` in deployment configuration.
-4. Verify `HEAD`, `206 Partial Content`, content range, caching and failure behavior against the real origin.
-5. Route both the frontend and `/api` through the same Cloudflare site or custom domain.
-6. Keep versioned BED, metadata, manifest and checksum release snapshots for reproducibility.
+```bash
+python3 scripts/generate_bted_d1.py \
+  --bundle-dir /path/to/verified-bundle \
+  --output-dir /private/tmp/bted-v03-d1-import
 
-Do not migrate the remaining assemblies until the pilot reproduces the existing JBrowse coordinates and track counts without evidence reinterpretation.
+npx wrangler d1 execute bted-catalogue-v03-preview --local \
+  --file /private/tmp/bted-v03-d1-import/schema.sql \
+  --config prototype/accession-range/wrangler.jsonc
+for f in /private/tmp/bted-v03-d1-import/[0-8][0-9]*.sql; do
+  npx wrangler d1 execute bted-catalogue-v03-preview --local \
+    --file "$f" --config prototype/accession-range/wrangler.jsonc || exit 1
+done
+```
+
+Wrangler 4.125 local D1 rejects explicit SQL `BEGIN/COMMIT`; the generator emits plain
+INSERT batches and lets D1 handle statement execution. The final local smoke count is
+28,399 endpoints, 211 assets, 164 public assets, 22 sources and 20 assemblies.
+
+## Remote deployment boundary
+
+The fixed HF revision has already passed 164/164 HEAD + single-byte Range audit. The
+non-interactive `CI=1 npx wrangler whoami` check currently reports unauthenticated, so no
+remote D1 or Worker URL was created. A human must run `npx wrangler login`, create the free
+preview D1, fill the local/private `database_id`, run the same batches remotely, and deploy
+with `npx wrangler deploy --config prototype/accession-range/wrangler.jsonc`. Do not put
+tokens/passwords in Git or logs. See [`docs/v0.3/deployment.md`](../../docs/v0.3/deployment.md)
+for the full sequence.
+
+FastAPI/PostgreSQL/Next.js code remains a future/alternative path; Render/Neon/Vercel are not
+current deployment dependencies.

@@ -1,8 +1,9 @@
 # BTED v0.3 架构契约
 
-**状态：** v0.3.0 developer preview（importer、materialized bundle、PostgreSQL writer、
-read API、同源 asset proxy、动态 JBrowse config、Next.js 页面、客户端 Explore 和 GFF gene
-query 已实现；Hugging Face public assets 已在固定 revision 完成远端 Range 审计；尚未上线）
+**状态：** v0.3.0 Cloudflare developer preview（canonical bundle → D1 import generator、
+Cloudflare Worker API、Worker Static Assets、同源 asset proxy、动态 JBrowse config 已实现；
+Hugging Face public assets 已在固定 revision 完成远端 Range 审计；远程 Cloudflare deployment
+因 Wrangler 未登录尚未执行）
 **适用版本：** v0.2.0 与 v0.3.0 并行
 **范围：** 当前仓库已经审计的 BATTER S1 内部数据
 
@@ -30,29 +31,32 @@ v0.2 与 v0.3 并行存在：
 - 两个版本可以在一段时间内同时被查询或下载。API 响应必须显式返回
   `release_version`，避免客户端把两个版本混成一个集合。
 
-## 2. 目标部署拓扑
+## 2. 当前部署拓扑
 
-生产拓扑的责任边界如下：
+当前 preview 的责任边界如下；它是本分支实际执行和 smoke 的部署路径：
 
 | 组件 | 责任 | 不承担的责任 |
 | --- | --- | --- |
-| Vercel / Next.js | 用户界面、SSR/静态页面、调用同源 API、生成 JBrowse deep link | 不在页面代码内复制 22 个来源的科学数据，不直接连接 Neon |
-| Render / FastAPI | `/api/v1` 查询与下载契约、分页/过滤/校验、release/provenance 响应 | 不在请求中临时解释论文，不把预测结果变成端点 |
-| Neon / PostgreSQL | v0.3 派生查询层，保存 release/import provenance 和规范化关联 | 不取代 canonical release，不允许生产请求任意写数据 |
-| Hugging Face 资产 | 大型 FASTA/FAI/GFF3/TBI、BigWig、BED 或归档的对象存储（按许可注册）；当前 public handoff 为 `seu-yolo/BTED-v0.3-assets` 的固定 revision `d12190e434057edaf2c2bdbf19132f1e41873c38` | 不作为未登记 URL 的开放代理，不改变对象内容；47 个 private/external 对象不上传 |
-| 同源 `/api/v1/assets/{asset_id}` | 由 FastAPI 代理已登记资产；支持 `HEAD` 和 HTTP Range，隐藏跨域/对象路径细节 | 不接受任意 `?url=`，不绕过 assets 表的 checksum/许可状态 |
+| Cloudflare Worker | `/api/*` catalogue/source/assembly/endpoint/augmentation API、动态 JBrowse config、登记资产 GET/HEAD/单 Range 代理；非 API 请求交给静态站点 | 不解释论文、不改变 endpoint evidence、不接受任意 URL |
+| Cloudflare D1 | canonical `v0.2.0` 的 preview 查询投影：release/publication/assembly/source/accession/track/asset/endpoint；由生成器批次重建 | 不取代 canonical release；不保存当前页面未使用的 `genes` 或 `source_annotations` 行；不做 promotion |
+| Worker Static Assets (`site/`) | 复用现有 BTED 静态 UX，使站点和 API 同一 Cloudflare deployment | 不复制科学数据到页面代码，不承担 D1 导入 |
+| Hugging Face 资产 | 大型 FASTA/FAI/GFF3/TBI、BED 和小型登记文件的固定 revision `seu-yolo/BTED-v0.3-assets@d12190e434057edaf2c2bdbf19132f1e41873c38` | 不作为未登记 URL 的开放代理，不改变对象内容；47 个 private/external 对象不上传 |
+
+FastAPI/PostgreSQL/Next.js 代码保留为 future/alternative：它们继续通过现有契约和测试维护，
+但不属于当前 Cloudflare deployment 的依赖。旧的 Render/Neon/Vercel 路线已停止，不应在本轮
+创建或配置其资源。
 
 请求路径的逻辑关系为：
 
 ```text
-浏览器 / Next.js (Vercel)
-        │ same-origin /api/v1
+浏览器 / site/ 静态页面
+        │ same-origin /api
         ▼
-FastAPI (Render) ── SQL ──> Neon PostgreSQL（派生查询层）
+Cloudflare Worker ── D1 ──> preview catalogue projection
         │
-        └── registered asset + checksum ──> Hugging Face（大型发布资产）
+        └── registered public asset + checksum ──> Hugging Face（固定 revision）
 
-canonical release（Git/版本化发布资产） ── atomic importer ──> Neon
+canonical release / verified bundle ── generator + SQL batches ──> D1 local/preview
 ```
 
 这里的“同源”指浏览器看到的资产入口始终是部署域名下的
@@ -61,8 +65,10 @@ Hugging Face 对象。对象的 byte size、SHA-256、媒体类型、是否支�
 归属均由 `assets` 表记录。完整 SHA-256 在资产登记/import 阶段复算；partial request
 只校验 allowlist、登记 byte size、Content-Range 和返回长度，不在每次请求重算整文件。
 
-上面的 Vercel/Render/Neon/Hugging Face 组合是目标生产拓扑，不是当前已部署状态；当前
-分支是本地可验证的 developer preview。
+当前 Worker 只读取 D1 中登记的 public asset key，再根据配置中的固定 HF origin 构造 URL；
+请求中的 `?url=`、未登记 key、private asset 和非 allowlisted origin 都被拒绝。D1 的 release
+状态明确为 `preview`，保持 canonical `release_version=v0.2.0`，不代表新的 `v0.3.0` 数据
+release。完整命令和远程登录边界见 [`deployment.md`](deployment.md)。
 
 浏览器的信息层级、缩放行为、证据措辞和入口布局由单独的
 [`browser-ui-contract.md`](browser-ui-contract.md) 冻结；它是 Next.js/JBrowse 实现的
@@ -154,7 +160,7 @@ endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public ob
 这些结果和测试是本地/隔离环境验证；Hugging Face 的真实固定 revision 远端证据另由
 `data/registry/remote_asset_audit.v0.2.0-hf.json` 保存（164/164 HEAD 200 + Range 206，
 164 对象共 126,280,212 bytes）。该证据对应 canonical `release_version=v0.2.0`，不代表
-已发布 `v0.3.0` 数据。v0.3 尚未上线；剩余实际事项是 PostgreSQL/容器导入 smoke、
-Render/Neon/Vercel production deployment、轻量 JBrowse shell 打包，以及
-`endpoint_gene_context` 的定义/计算。使用 `resolve/main` 生成的旧 verified bundle 已
-被固定 revision 结果取代，不作为最终交付。
+已发布 `v0.3.0` 数据。D1 local import 与 Worker HTTP smoke 已完成；远程 Cloudflare deployment
+仍等待 `wrangler whoami` 登录。轻量 JBrowse shell 仍是独立后续工作，`endpoint_gene_context`
+尚未定义或计算。使用 `resolve/main` 生成的旧 verified bundle 已被固定 revision 结果取代，
+不作为最终交付。

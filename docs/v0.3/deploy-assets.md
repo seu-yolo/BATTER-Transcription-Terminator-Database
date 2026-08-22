@@ -129,10 +129,15 @@ release.
 
 ## Remaining gates
 
-- Run the real PostgreSQL/container import smoke and count audit in an isolated
-  environment; do not connect this evidence step to production or promote.
-- Complete Render/Neon/Vercel deployment smoke tests and package the lightweight
-  JBrowse shell/configuration separately.
+- Generate and import the verified bundle into the Cloudflare D1 preview projection;
+  the current local D1 smoke is documented in [`deployment.md`](deployment.md). This
+  remains a preview projection, not a PostgreSQL promotion or a new data release.
+- Complete the Cloudflare remote deployment only after a human performs the short
+  `npx wrangler login` step; the non-interactive `wrangler whoami` check is currently
+  unauthenticated, so no remote D1 or Worker URL exists in this handoff.
+- Render/Neon/Vercel are future/alternative deployment paths for the retained
+  FastAPI/PostgreSQL/Next.js code and are intentionally not part of this route.
+- Package and separately accept the lightweight JBrowse shell/configuration.
 - Define and review the `endpoint_gene_context` algorithm; it remains zero.
 
 The audit script's injected transport and focused tests are for offline code

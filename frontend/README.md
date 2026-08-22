@@ -1,5 +1,10 @@
 # BTED frontend (v0.3)
 
+**Deployment status:** this Next.js interface is retained as a future/alternative frontend
+for the `/api/v1` FastAPI contract. The current preview deploys the existing `site/` static UX
+with the Cloudflare Worker + D1 route described in [`docs/v0.3/deployment.md`](../docs/v0.3/deployment.md);
+Next.js/Vercel is not a current deployment dependency.
+
 This directory contains the English-only Next.js App Router interface for the
 BTED v0.3 read API. It is aimed at researchers who need to find a species,
 strain, versioned assembly, study, raw accession, evidence class, or endpoint

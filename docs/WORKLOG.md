@@ -1,5 +1,40 @@
 # 工作日志
 
+## 2026-08-22–23 —— v0.3 Cloudflare Worker + D1 catalogue preview
+
+**分支：** `feature/bted-v0.3-dynamic-service`
+**范围：** 停止 Render/Neon/Vercel 路线，改为 Cloudflare Worker + D1 + Worker Static Assets；
+不修改 canonical v0.2 release、不 promote 数据版本、不提交巨型 seed 或凭据。
+
+### 完成内容与真实测量
+
+1. `scripts/generate_bted_d1.py` 从固定 HF verified bundle 生成 D1 `schema.sql`、元数据/资产/
+   轨道批次和分片 endpoint INSERT；生成物只写到仓库外临时目录。D1 不保存当前 API 未使用
+   的 `genes`/`source_annotations` 行，后二者仍由登记的 HF/metadata assets 保持。
+2. `prototype/accession-range/schema.sql` 扩展到 release/publication/assembly/contig/source/
+   accession/asset/track/endpoint catalogue；`status=preview` 明确是 `v0.2.0` 的查询投影。
+3. `prototype/accession-range/src/worker.js` 提供 `/api/health`、stats、catalogue、sources、
+   assemblies、endpoints、augmentation、动态 JBrowse config，以及登记 public asset 的
+   GET/HEAD/单 Range 同源代理；静态请求交给现有 `site/`。代理拒绝未知/private key、
+   任意 `?url=` 和非 allowlisted origin。
+4. `prototype/accession-range/wrangler.jsonc` 固定 HF revision、D1 binding 和 `site/` Static
+   Assets；`docs/v0.3/deployment.md`、`prototype/accession-range/README.md`、架构和资产
+   handoff 文档同步标记 FastAPI/PostgreSQL/Next.js 为 future/alternative。
+5. 本地 Wrangler 4.125 D1 实际导入最终计数：1 release、13 publications、20 assemblies、
+   49 contigs、22 sources、32 source accessions、22 tracks、211 assets（164 public）和
+   28,399 endpoints；SQLite 主库约 31 MB，含 WAL 的 local state 约 68 MB。Worker 有界 HTTP
+   smoke：catalogue/source/assembly/endpoint/augmentation/JBrowse 全部 200；固定 HF FASTA
+   与 BED HEAD 200、单 Range 206；`remote-data` alias 200，任意 origin 400，缺 public
+   FASTA+FAI 的 assembly 404。
+
+### Cloudflare 状态与边界
+
+`CI=1 npx wrangler whoami` 非交互检查明确为 unauthenticated；没有创建远程 D1、没有部署
+Worker、没有线上 URL。最短人工步骤是用户运行 `npx wrangler login`，之后按
+`docs/v0.3/deployment.md` 创建免费/preview D1、填入未提交 database id 并部署。所有本地
+`.wrangler` cache 和生成 SQL 都是临时物，不进入 Git；HF 固定 revision 与 164/164 audit
+证据保持不变。
+
 ## 2026-08-21 —— BTED v0.3 第一里程碑：架构契约与数据库骨架
 
 **分支：** `feature/bted-v0.3-dynamic-service`

@@ -28,10 +28,11 @@ v0.2.0 保留固定的 24 列核心端点表，并增加通过 `end_id` 关联�
 
 ## BTED v0.3 developer preview
 
-当前分支 `feature/bted-v0.3-dynamic-service` 提供尚未上线的 v0.3 developer preview。
-它已经实现 importer、materialized bundle、PostgreSQL writer、只读 FastAPI read API、同源
-asset proxy、动态 JBrowse config、Next.js 页面、客户端动态 Explore，以及基于真实 GFF 的
-gene query；这些组件仍以 canonical release 和登记资产为真源，不改写 v0.2 发布目录。
+当前分支 `feature/bted-v0.3-dynamic-service` 提供尚未远程上线的 v0.3 Cloudflare developer
+preview。当前部署路径是 Cloudflare Worker + D1 + Worker Static Assets：它复用现有 `site/`
+静态 UX，提供 catalogue/source/assembly/endpoint/augmentation API、动态 JBrowse config 和
+登记 HF asset 的同源 Range 代理。现有 FastAPI/PostgreSQL/Next.js 组件仍保留为
+future/alternative，以 canonical release 和登记资产为真源，不改写 v0.2 发布目录。
 
 当前 release/query layer 的计数如下：
 
@@ -44,7 +45,7 @@ gene query；这些组件仍以 canonical release 和登记资产为真源，不
 | GFF-derived genes | 95,437 |
 | materialized assets | 211（其中 164 个 public objects，已在固定 HF revision 通过 Range audit） |
 
-本地开发入口：
+本地前端开发入口（alternative Next.js path）：
 
 ```bash
 cd frontend
@@ -66,9 +67,12 @@ canonical `release_version=v0.2.0`，不是一个新的 `v0.3.0` 数据 release�
 [`data/registry/remote_asset_audit.v0.2.0-hf.json`](data/registry/remote_asset_audit.v0.2.0-hf.json)，
 其 SHA-256 为 `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
 
-剩余的实际边界是：尚未在真实 PostgreSQL/容器中执行导入 smoke（本机没有
-Docker/PostgreSQL）；尚未进行 Render/Neon/Vercel production deployment；需要单独打包
-轻量 JBrowse shell；`endpoint_gene_context` 尚未定义或计算。旧的 mutable
+Cloudflare 本地 D1 已完成真实批次导入（1 release、13 publications、20 assemblies、49
+contigs、22 sources、32 accessions、22 tracks、211 assets、28,399 endpoints），Worker
+HTTP/HEAD/Range/JBrowse smoke 已通过；本地 D1 state 在 smoke 时约 68 MB。远程 Cloudflare
+只因 `CI=1 npx wrangler whoami` 未登录而未创建资源/URL，最短人工步骤见
+[`docs/v0.3/deployment.md`](docs/v0.3/deployment.md)。轻量 JBrowse shell 仍需单独打包，
+`endpoint_gene_context` 尚未定义或计算。旧的 mutable
 `resolve/main` verified bundle 不作为最终交付；本地 pinned verified bundle 是临时交接物，
 不进入 Git。
 

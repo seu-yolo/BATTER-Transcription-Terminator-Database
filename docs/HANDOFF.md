@@ -1,25 +1,50 @@
 # BTED 当前交接
 
-**更新：** 2026-08-22
+**更新：** 2026-08-23
 
 **当前分支：** `feature/bted-v0.3-dynamic-service`
 
-**当前里程碑：** v0.3.0 developer preview 已实现 importer、materialized bundle、PostgreSQL
-writer、只读 FastAPI read API、同源 asset proxy、动态 JBrowse config、Next.js 页面、客户端
-动态 Explore 和基于真实 GFF 的 gene query；并保留基于既有 v0.2 JBrowse bundle 的 47 个
-canonical contig registry 行。当前计数为 22 个来源（21 `published_standardized` + 1
+**当前里程碑：** v0.3.0 Cloudflare developer preview 已增加从固定 HF verified bundle 生成
+D1 batches 的脚本、完整 catalogue D1 schema、Cloudflare Worker API、Worker Static Assets、
+登记 asset 的同源 GET/HEAD/Range 代理和动态 JBrowse config；现有 FastAPI/PostgreSQL/Next.js
+保留为 future/alternative。当前计数为 22 个来源（21 `published_standardized` + 1
 `audit_only`）、20 个 release assembly records、19 个去重 published browser assemblies、
 28,399 个 endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public
-objects）。Hugging Face public object handoff 已在固定 revision 完成 164/164 HEAD 200 +
-Range 206 审计；当前仍未连接真实 PostgreSQL/容器、未做 production deployment，因此不能
-把 v0.3 写成已上线。
+objects）。本地 Wrangler 4.125 D1 实际导入为 1 release、13 publications、20 assemblies、
+49 contigs、22 sources、32 accessions、22 tracks、211 assets 和 28,399 endpoints；local
+SQLite state（含 WAL）约 68 MB。Worker 的有界 HTTP smoke 与固定 HF HEAD/Range smoke 已通过。
+Hugging Face public object handoff 已在固定 revision 完成 164/164 HEAD 200 + Range 206 审计；
+远程 Cloudflare 仍因 `CI=1 npx wrangler whoami` 未登录而未创建资源/URL，因此不能把 v0.3
+写成已上线。
 
 **最新 handoff 参考：** `96577c8`、`7dbd580`。
 
-**当前验证：** Python 全量测试 126/126 PASS；frontend `pnpm run check-contract`、
-`pnpm run build` 和 `git diff --check` PASS。真实固定 revision 证据保存在
+**当前验证：** Python 全量测试 126/126 PASS（此前基线）；Worker `node --check`、本地 D1
+真实导入、HTTP/Range/JBrowse smoke 和 `git diff --check` 正在本轮收口；frontend
+`pnpm run check-contract`、`pnpm run build` 已在此前基线通过。真实固定 revision 证据保存在
 `data/registry/remote_asset_audit.v0.2.0-hf.json`，SHA-256 为
 `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
+
+## 2026-08-22–23 v0.3 Cloudflare catalogue preview
+
+- 当前部署配置是 `prototype/accession-range/wrangler.jsonc`：Worker + D1 binding
+  `BTED_DB` + `site/` Static Assets；HF origin 固定到 revision
+  `d12190e434057edaf2c2bdbf19132f1e41873c38`。Render/Neon/Vercel 路线已停止，FastAPI/
+  PostgreSQL/Next.js 代码仅保留为 future/alternative。
+- `scripts/generate_bted_d1.py` 从 verified bundle 生成外部临时 SQL 批次，不提交大 seed。
+  D1 只保存用户当前查询所需的 release/publication/assembly/contig/source/accession/
+  asset/track/endpoint；source annotations 保持 HF/metadata assets，genes 暂不入库。
+- 本地 D1 真实导入最终行数：1 release、13 publication、20 assembly、49 contig、22 source、
+  32 accession、22 track、211 asset（164 public）和 28,399 endpoint；SQLite 主库约 31 MB，
+  含 WAL 的 local state 约 68 MB。首次批次显式事务被 Wrangler 拒绝，已移除生成器的
+  `BEGIN/COMMIT`，重跑后全量导入成功。
+- 有界 Worker HTTP smoke 已验证 health/stats/catalogue/source/assembly/endpoint/augmentation/
+  JBrowse；固定 HF FASTA/BED HEAD 为 200、单 Range 为 206、同源 `remote-data` alias 可用，
+  任意 `?url=` 为 400，private assembly（无 public FASTA+FAI）为 404。Detail 路由最初漏包
+  `Response`、assembly browser flag 未包含 source BED，均已修复。
+- `CI=1 npx wrangler whoami` 返回未认证；没有创建远程 D1、部署 Worker 或产生线上 URL。
+  用户只需运行一次 `npx wrangler login`，再按 `docs/v0.3/deployment.md` 创建免费/preview
+  D1、填入未提交 database id、导入批次并部署。
 
 ## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
 
@@ -518,18 +543,20 @@ Materializer `bted-materializer-0.3.0-b2` 已统一所有 asset origin 为
 
 ## v0.3 developer preview 当前边界收口（2026-08-22）
 
-本分支当前已经具备 importer/materialized bundle/PostgreSQL writer/read API、同源 asset
-proxy、动态 JBrowse config、Next.js pages、客户端动态 Explore 和 GFF-derived gene query。
-真实数据计数为 22 个来源（21 published + 1 audit-only）、20 个 release assembly records、
-19 个去重 published browser assemblies、28,399 个 endpoints、95,437 个 genes，以及 211
-个 materialized assets，其中 164 个 public objects 已在上述固定 HF revision 完成远端验证。
-报告位于 `data/registry/remote_asset_audit.v0.2.0-hf.json`；local simulated audit 仍不替代
-该真实 pinned-origin evidence。
+本分支当前已经具备 importer/materialized bundle/PostgreSQL writer/read API、Cloudflare D1
+generator/schema、Cloudflare Worker catalogue API、同源 asset proxy、动态 JBrowse config、
+Next.js pages、客户端动态 Explore 和 GFF-derived gene query。真实数据计数为 22 个来源
+（21 published + 1 audit-only）、20 个 release assembly records、19 个去重 published browser
+assemblies、28,399 个 endpoints、95,437 个 genes，以及 211 个 materialized assets，其中
+164 个 public objects 已在上述固定 HF revision 完成远端验证。Cloudflare local D1 与 Worker
+smoke 已完成；报告位于 `data/registry/remote_asset_audit.v0.2.0-hf.json`；local simulated
+audit 仍不替代该真实 pinned-origin evidence。
 
 剩余事项仅包括：
 
-- 没有真实 PostgreSQL/container import smoke（本机没有 Docker/PostgreSQL）；
-- 没有 Render/Neon/Vercel production deployment；
+- Wrangler 当前未登录，尚未创建远程 D1、部署 Worker 或产生线上 URL；
+- FastAPI/PostgreSQL/Next.js alternative path 没有真实 PostgreSQL/container import smoke
+  （本机没有 Docker/PostgreSQL）；
 - 需要单独打包和验收轻量 JBrowse shell；
 - `endpoint_gene_context` 尚未定义或计算。
 

@@ -1,5 +1,9 @@
 # BTED v0.3 数据库骨架
 
+**部署状态：** 本 PostgreSQL/Neon schema 与 writer 是保留的 future/alternative path；当前
+preview 使用 `prototype/accession-range/schema.sql` 的 Cloudflare D1 投影和
+`scripts/generate_bted_d1.py`，不依赖 PostgreSQL、Neon 或 Render。
+
 `schema.sql` 是 BTED v0.3 PostgreSQL 派生查询层的初始 DDL。它只定义表、约束、索引和
 阻止非法公开 endpoint 的触发器，不导入数据，也不连接 Neon/Render。科研真源仍是
 版本化 canonical release（manifest、24 列 `endpoints.tsv`、来源附表、BED、字段清单和
