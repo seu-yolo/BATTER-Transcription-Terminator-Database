@@ -2,7 +2,7 @@
 
 **状态：** v0.3.0 developer preview（importer、materialized bundle、PostgreSQL writer、
 read API、同源 asset proxy、动态 JBrowse config、Next.js 页面、客户端 Explore 和 GFF gene
-query 已实现；尚未上线）
+query 已实现；Hugging Face public assets 已在固定 revision 完成远端 Range 审计；尚未上线）
 **适用版本：** v0.2.0 与 v0.3.0 并行
 **范围：** 当前仓库已经审计的 BATTER S1 内部数据
 
@@ -39,7 +39,7 @@ v0.2 与 v0.3 并行存在：
 | Vercel / Next.js | 用户界面、SSR/静态页面、调用同源 API、生成 JBrowse deep link | 不在页面代码内复制 22 个来源的科学数据，不直接连接 Neon |
 | Render / FastAPI | `/api/v1` 查询与下载契约、分页/过滤/校验、release/provenance 响应 | 不在请求中临时解释论文，不把预测结果变成端点 |
 | Neon / PostgreSQL | v0.3 派生查询层，保存 release/import provenance 和规范化关联 | 不取代 canonical release，不允许生产请求任意写数据 |
-| Hugging Face 资产 | 大型 FASTA/FAI/GFF3/TBI、BigWig、BED 或归档的对象存储（按许可注册） | 不作为未登记 URL 的开放代理，不改变对象内容 |
+| Hugging Face 资产 | 大型 FASTA/FAI/GFF3/TBI、BigWig、BED 或归档的对象存储（按许可注册）；当前 public handoff 为 `seu-yolo/BTED-v0.3-assets` 的固定 revision `d12190e434057edaf2c2bdbf19132f1e41873c38` | 不作为未登记 URL 的开放代理，不改变对象内容；47 个 private/external 对象不上传 |
 | 同源 `/api/v1/assets/{asset_id}` | 由 FastAPI 代理已登记资产；支持 `HEAD` 和 HTTP Range，隐藏跨域/对象路径细节 | 不接受任意 `?url=`，不绕过 assets 表的 checksum/许可状态 |
 
 请求路径的逻辑关系为：
@@ -149,9 +149,12 @@ D1/D2/D3 已实现 Next.js App Router 页面、客户端动态 `/explore`、动�
 基于真实 GFF/FAI 的 gene query；importer/materializer 和 PostgreSQL writer 也已实现真实
 GFF gene rows 的物化与批量写入。当前计数为 22 个来源（21 published + 1 audit-only）、
 20 个 release assembly records、19 个去重 published browser assemblies、28,399 个
-endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public candidates）。
+endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public objects）。
 
-这些结果和测试是本地/隔离环境验证，不把 local simulated audit 计作远端证据。v0.3 尚未上线；
-剩余实际事项只有 Hugging Face/object upload 与 164 个候选对象的 HTTP Range audit、真实
-PostgreSQL/容器导入 smoke（本机没有 Docker/PostgreSQL）、Render/Neon/Vercel production
-deployment，以及 `endpoint_gene_context` 的定义/计算。
+这些结果和测试是本地/隔离环境验证；Hugging Face 的真实固定 revision 远端证据另由
+`data/registry/remote_asset_audit.v0.2.0-hf.json` 保存（164/164 HEAD 200 + Range 206，
+164 对象共 126,280,212 bytes）。该证据对应 canonical `release_version=v0.2.0`，不代表
+已发布 `v0.3.0` 数据。v0.3 尚未上线；剩余实际事项是 PostgreSQL/容器导入 smoke、
+Render/Neon/Vercel production deployment、轻量 JBrowse shell 打包，以及
+`endpoint_gene_context` 的定义/计算。使用 `resolve/main` 生成的旧 verified bundle 已
+被固定 revision 结果取代，不作为最终交付。

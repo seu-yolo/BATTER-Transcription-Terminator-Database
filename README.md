@@ -42,7 +42,7 @@ gene query；这些组件仍以 canonical release 和登记资产为真源，不
 | 去重后的 published browser assemblies | 19 |
 | endpoint records | 28,399 |
 | GFF-derived genes | 95,437 |
-| materialized assets | 211（其中 164 个 public candidates） |
+| materialized assets | 211（其中 164 个 public objects，已在固定 HF revision 通过 Range audit） |
 
 本地开发入口：
 
@@ -57,11 +57,20 @@ pnpm run dev
 契约检查和生产构建分别使用 `pnpm run check-contract` 与 `pnpm run build`；更多运行说明见
 [`frontend/README.md`](frontend/README.md) 与 [`docs/v0.3/architecture.md`](docs/v0.3/architecture.md)。
 
-v0.3 仍不是生产上线。剩余的实际边界只有：尚未执行 Hugging Face/object upload 与全部
-164 个候选对象的 HTTP Range audit；尚未在真实 PostgreSQL/容器中执行导入 smoke（本机没有
-Docker/PostgreSQL）；尚未进行 Render/Neon/Vercel production deployment；
-`endpoint_gene_context` 尚未定义或计算。任何本地 simulated audit 都不计作远端证据，164 个
-public candidates 也不等于已经公开可访问。
+v0.3 仍不是生产上线。Hugging Face public object handoff 已完成，但它验证的是当前
+canonical `release_version=v0.2.0`，不是一个新的 `v0.3.0` 数据 release：
+[`seu-yolo/BTED-v0.3-assets`](https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets)
+的固定 revision 为
+`d12190e434057edaf2c2bdbf19132f1e41873c38`，164 个 public objects（126,280,212 bytes）
+均通过 HEAD 200 + 单字节 Range 206，47 个 private/external objects 未上传。可复核证据位于
+[`data/registry/remote_asset_audit.v0.2.0-hf.json`](data/registry/remote_asset_audit.v0.2.0-hf.json)，
+其 SHA-256 为 `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
+
+剩余的实际边界是：尚未在真实 PostgreSQL/容器中执行导入 smoke（本机没有
+Docker/PostgreSQL）；尚未进行 Render/Neon/Vercel production deployment；需要单独打包
+轻量 JBrowse shell；`endpoint_gene_context` 尚未定义或计算。旧的 mutable
+`resolve/main` verified bundle 不作为最终交付；本地 pinned verified bundle 是临时交接物，
+不进入 Git。
 
 ## 数据边界
 

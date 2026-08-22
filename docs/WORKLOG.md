@@ -1096,3 +1096,41 @@ assembly list/detail 现在返回同一 release 的 `gene_count`；新增 `/gene
 现有 `GET /api/v1/genes` 支持 assembly、contig、locus tag、stable gene ID、feature type
 和 1-based start 区间过滤。列表提供 gene detail 与 assembly context 入口，导航增加 Genes。
 本轮只呈现 GFF-derived annotation，不计算 `endpoint_gene_context`，也未修改生物数据。
+
+## 2026-08-22 —— v0.3 Hugging Face public asset handoff：固定 revision 完成
+
+**范围：** 只上传并审计已登记的 public objects；没有上传 private/external objects，没有
+连接 PostgreSQL、没有 promote、没有修改 canonical `v0.2.0` 数据或 Git 历史。
+
+### 完成内容
+
+1. 以账户 `seu-yolo` 创建并使用 public dataset
+   `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets`。最终固定 revision 为
+   `d12190e434057edaf2c2bdbf19132f1e41873c38`；pinned origin 为
+   `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38`。
+2. 带当前 105 行 browser inventory 重新 materialize canonical `release_version=v0.2.0`：
+   211 行 assets，其中 164 行满足 `is_public=true` 与
+   `redistribution_status=verified_redistributable`，47 行 private/external 被排除；
+   164 个 public object 的本地登记字节总数为 126,280,212。
+3. 使用 resumable `hf upload-large-folder` 提交 164 个 object 加
+   `ASSET_OBJECTS.json` 与 `SHA256SUMS.txt`；远端 snapshot 另含 Hub 自动生成的
+   `.gitattributes`。没有上传 staging JSONL、audit report、token 或 private 文件。
+4. 对 pinned origin 重新执行真实逐对象 HEAD 与单字节 Range audit：164/164 HEAD `200`、
+   164/164 Range `206`，每行 `supports_range=true`/`ok=true`。证据已纳入
+   `data/registry/remote_asset_audit.v0.2.0-hf.json`，SHA-256 为
+   `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
+5. 以 pinned audit 离线 apply 生成 `asset_origin_status=verified` bundle；verified
+   manifest SHA-256 为
+   `849876269dd1827014f1a75daacd2fdf418c642eb96fd39984d58641913f2264`，并通过
+   `verify-bundle`（211 assets、28,399 endpoints、95,437 genes、0
+   `endpoint_gene_context`）。最终 bundle 是本机临时交接物，不提交到 Git；旧 mutable
+   `resolve/main` bundle 不作为最终交付。
+
+### 验证与剩余事项
+
+- `python3 -m unittest -v tests.test_bted_v03_assets tests.test_audit_v03_remote_assets tests.test_apply_v03_remote_asset_audit`：17 tests，16 passed、1 个 FastAPI optional test skipped。
+- `python -m unittest -v tests/test_bted_ingestion.py`：4/4 PASS。
+- `git diff --check`：待本轮文档修改完成后运行。
+- 剩余：真实 PostgreSQL/container import smoke、Render/Neon/Vercel deployment、轻量
+  JBrowse shell 打包，以及 `endpoint_gene_context` 算法定义/审核；本次资产证据不代表
+  `v0.3.0` 数据 release 或 production promotion。

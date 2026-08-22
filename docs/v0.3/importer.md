@@ -204,10 +204,15 @@ assembly；BED/BigWig 只关联 source；S1_002 不产生浏览器资产。
 所有资产统一以 `logical_path` 生成计划 origin URL，即
 `<asset_origin_base>/<logical_path>`；browser inventory 的 `object_path` 在物化后就是对应
 `logical_path`。目录层级会保留，`asset_id` 只作数据库/API key，绝不替代远端对象路径。
-当前对象尚未上传，manifest 仍记录
-`asset_origin_status=planned_not_verified`，所有资产 `supports_range=false`。TSV 中
+物化阶段的默认状态仍记录为
+`asset_origin_status=planned_not_verified`，所有资产 `supports_range=false`；这是上传前
+bundle 的安全默认值。当前 canonical `release_version=v0.2.0` 的 public object handoff
+已经在 Hugging Face dataset `seu-yolo/BTED-v0.3-assets` 的固定 revision
+`d12190e434057edaf2c2bdbf19132f1e41873c38` 完成 164/164 HEAD 200 + Range 206 审计，证据
+位于 `data/registry/remote_asset_audit.v0.2.0-hf.json`。只有使用该报告离线 apply 生成的
+新 bundle 才能写成 `asset_origin_status=verified`；TSV 中
 `external_link_only` 行必须 `is_public=false`；这一步只准备可审计写库行，不表示 URL
-已经存在或 JBrowse 已可打开。
+自动代表 JBrowse 或数据库已经上线。
 
 `--output-dir` 和 `--asset-origin-base` 都必须显式给出；非空目录拒绝覆盖。origin 只
 是未来服务层的 HTTPS 计划前缀，bundle 把状态写为 `planned_not_verified`，不表示远程

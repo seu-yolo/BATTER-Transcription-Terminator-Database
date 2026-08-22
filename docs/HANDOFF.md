@@ -10,13 +10,16 @@ writer、只读 FastAPI read API、同源 asset proxy、动态 JBrowse config、
 canonical contig registry 行。当前计数为 22 个来源（21 `published_standardized` + 1
 `audit_only`）、20 个 release assembly records、19 个去重 published browser assemblies、
 28,399 个 endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public
-candidates）。当前仍未连接真实 PostgreSQL/容器、未完成远端资产上传与 Range audit，也未做
-production deployment；因此不能把 v0.3 写成已上线。
+objects）。Hugging Face public object handoff 已在固定 revision 完成 164/164 HEAD 200 +
+Range 206 审计；当前仍未连接真实 PostgreSQL/容器、未做 production deployment，因此不能
+把 v0.3 写成已上线。
 
 **最新 handoff 参考：** `96577c8`、`7dbd580`。
 
 **当前验证：** Python 全量测试 126/126 PASS；frontend `pnpm run check-contract`、
-`pnpm run build` 和 `git diff --check` PASS。local simulated audit 不计作远端证据。
+`pnpm run build` 和 `git diff --check` PASS。真实固定 revision 证据保存在
+`data/registry/remote_asset_audit.v0.2.0-hf.json`，SHA-256 为
+`3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
 
 ## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
 
@@ -410,7 +413,7 @@ JBrowse link，frontend 显示 `Open JBrowse`。
 未进行真实 PostgreSQL/远端资产/JBrowse 浏览器 smoke test。当前 v0.2 B1 canonical 资产仍不含参考/信号
 浏览器对象，后续需单独登记这些资产后才会在真实 assembly 上生成可打开配置。
 
-## D3 浏览器资产物化接手说明（2026-08-22）
+## D3 浏览器资产物化接手说明（历史准备状态，2026-08-22）
 
 `scripts/build_v03_jbrowse_asset_inventory.py` 已从既有 v0.2 JBrowse bundle 与 canonical
 endpoint BED 生成 tracked TSV/JSON inventory。最初按 20 个 published assembly、109 行
@@ -429,7 +432,9 @@ origin URL 使用 inventory 的 `object_path`，但状态仍是 `planned_not_ver
 浏览器资产。focused 4/4、ingestion 4/4 PASS；主代理使用含 FastAPI 依赖的
 `/private/tmp/bted-v03-api-venv` 完成全量 107/107 PASS、无 skip（仅有 Starlette
 `TestClient` deprecation warning）。211-asset bundle 已通过离线 `verify_bundle()`。
-尚未上传资产或完成远端/数据库/JBrowse smoke test。
+该段记录资产尚未上传时的准备状态；后续固定 revision 的上传与远端 Range audit 已在
+“v0.3 Hugging Face public asset handoff complete”一节完成。数据库/JBrowse smoke test
+仍未执行。
 
 ## 2026-08-22 v0.3 GFF-derived gene query layer
 
@@ -455,9 +460,9 @@ contigs/0 genes。新增 focused real-count（本地有 v0.2 bundle 时）与 fa
 preflight/load-order tests；CI 没有本地大 bundle 时 real-count test 会 skip，但生成器
 和默认路径仍会执行。
 
-## v0.3 公共资产远端交接（2026-08-22）
+## v0.3 公共资产远端交接准备（历史状态，2026-08-22）
 
-当前只完成本地准备与代码覆盖，**没有实际上传、联网审计或 verified promotion**。
+以下记录保留审计前的准备状态；它已由下面的固定 revision 完成交接记录取代。
 
 - tracked inventory：105 行、19 个唯一 assembly；其中 77 个 browser 对象为
   `verified_redistributable`/`is_public=true`。带 inventory 的 planned materialized
@@ -476,7 +481,7 @@ preflight/load-order tests；CI 没有本地大 bundle 时 real-count test 会 s
 - CI 现在显式运行 gene/object preparation/remote-audit 专项测试，并对这些脚本和
   `backend/importer` 的 canonical/materialize/postgres Python 文件执行 `py_compile`。
 
-## v0.3 远端审核报告应用交接（2026-08-22）
+## v0.3 远端审核报告应用交接准备（历史状态，2026-08-22）
 
 `scripts/apply_v03_remote_asset_audit.py` 是 audit 与 PostgreSQL writer 之间的离线步骤。
 输入 planned materialized bundle、`REMOTE_ASSET_AUDIT.json` 和 tracked browser inventory，
@@ -494,20 +499,38 @@ Materializer `bted-materializer-0.3.0-b2` 已统一所有 asset origin 为
 `<asset_origin_base>/<logical_path>`。重新物化会改变 assets/manifest/bundle checksum，但
 默认 127 与 inventory 211 行数不变；`asset_id` 不再用于拼接对象存储 URL。
 
+## v0.3 Hugging Face public asset handoff complete（2026-08-22）
+
+- Public dataset：`https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets`。
+- Immutable revision：`d12190e434057edaf2c2bdbf19132f1e41873c38`；pinned origin 为
+  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38`。
+- Canonical `release_version` 保持 `v0.2.0`；本次不是新的 `v0.3.0` 数据 release。
+- 164 个 public objects、总计 126,280,212 bytes；47 个 private/external objects 未上传。
+- 固定 revision 的真实远端 audit 为 164/164：每项 HEAD `200`、Range `206`、
+  `Content-Range` 与登记大小一致、返回一个字节。
+- 已将报告纳入 `data/registry/remote_asset_audit.v0.2.0-hf.json`；SHA-256：
+  `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
+- pinned verified bundle manifest SHA-256：
+  `849876269dd1827014f1a75daacd2fdf418c642eb96fd39984d58641913f2264`。verified bundle
+  本身是本机临时交接物，路径不写入仓库，也不作为远端对象上传。
+- 旧 `resolve/main` bundle 已被 pinned revision supersede，不作为最终交付；未连接
+  PostgreSQL、未 promote、未修改 canonical release 或 Git 历史。
+
 ## v0.3 developer preview 当前边界收口（2026-08-22）
 
 本分支当前已经具备 importer/materialized bundle/PostgreSQL writer/read API、同源 asset
 proxy、动态 JBrowse config、Next.js pages、客户端动态 Explore 和 GFF-derived gene query。
 真实数据计数为 22 个来源（21 published + 1 audit-only）、20 个 release assembly records、
 19 个去重 published browser assemblies、28,399 个 endpoints、95,437 个 genes，以及 211
-个 materialized assets，其中 164 个是 public candidates。public candidate 仍未完成远端
-验证，local simulated audit 不计作 remote evidence。
+个 materialized assets，其中 164 个 public objects 已在上述固定 HF revision 完成远端验证。
+报告位于 `data/registry/remote_asset_audit.v0.2.0-hf.json`；local simulated audit 仍不替代
+该真实 pinned-origin evidence。
 
 剩余事项仅包括：
 
-- 没有实际 Hugging Face/object upload，也没有完成全部 164 个候选对象的 HTTP Range audit；
 - 没有真实 PostgreSQL/container import smoke（本机没有 Docker/PostgreSQL）；
 - 没有 Render/Neon/Vercel production deployment；
+- 需要单独打包和验收轻量 JBrowse shell；
 - `endpoint_gene_context` 尚未定义或计算。
 
 因此 v0.3 仍是 developer preview，不应写成已上线。

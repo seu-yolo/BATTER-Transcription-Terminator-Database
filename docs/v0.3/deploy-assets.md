@@ -2,11 +2,12 @@
 
 This is the shortest maintainer sequence for handing the registered public
 objects (browser assets plus API-facing release files) to an external HTTPS
-object store. The repository does not implement an uploader, does not contain
-credentials, and this procedure must not be treated as completed until the
-remote audit has passed.
+object store. The repository does not implement an uploader and does not
+contain credentials. The upload and immutable-revision remote audit below are
+complete for the current handoff; database import and production deployment
+remain separate gates.
 
-## Current facts
+## Verified handoff (2026-08-22)
 
 - The tracked browser inventory has 105 rows spanning 19 unique assemblies.
 - The planned materialized bundle has 211 asset rows. The preparation policy
@@ -16,7 +17,24 @@ remote audit has passed.
   browser provenance cross-check; they are not the complete upload set.
 - The current local GFF/FAI materialization contains 95,437 genes and keeps
   `endpoint_gene_context` at zero.
-- No object has been uploaded or verified against a remote origin yet.
+- The public dataset is [seu-yolo/BTED-v0.3-assets](https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets).
+- The immutable audited revision is
+  `d12190e434057edaf2c2bdbf19132f1e41873c38`; all URLs use
+  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38`.
+- The 164 public objects total 126,280,212 bytes. All 164 passed HEAD `200`
+  with matching `Content-Length` and a single-byte Range `206` with the
+  registered `Content-Range` and one returned byte.
+- The generated evidence is committed at
+  `data/registry/remote_asset_audit.v0.2.0-hf.json` with SHA-256
+  `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`.
+- The verified bundle's manifest SHA-256 is
+  `849876269dd1827014f1a75daacd2fdf418c642eb96fd39984d58641913f2264`.
+  The final verified bundle itself is a local temporary handoff artifact and
+  is intentionally not committed.
+
+The JSON evidence keeps `release_version` as `v0.2.0`: the asset handoff
+verifies the current canonical release and does not publish a `v0.3.0` data
+release.
 
 ## Maintainer sequence
 
@@ -31,7 +49,7 @@ remote audit has passed.
      --release-root data/public/v0.2.0 \
      --repo-root . \
      --output-dir /path/to/bted-v03-staging-with-browser \
-     --asset-origin-base https://assets.example.org/bted/v0.2.0 \
+     --asset-origin-base https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38 \
      --generated-at-utc 2026-08-22T00:00:00Z \
      --jbrowse-asset-inventory data/registry/jbrowse_assets.v0.2.0.tsv \
      --jbrowse-bundle-root /path/to/BTED-v0.2.0-jbrowse
@@ -53,10 +71,12 @@ remote audit has passed.
    check; it does not create upload payload files.
 
 2. Upload the copied object tree with the project-approved external/manual
-   uploader. Preserve every `object_path` exactly, use the explicit HTTPS
-   origin base that will be given to the audit command, and do not upload the
-   47 excluded objects. The repository has no upload command and no upload
-   credentials.
+   uploader. Preserve every `object_path` exactly, use the explicit immutable
+   HTTPS origin base that will be given to the audit command, and do not upload
+   the 47 excluded objects. The 164-object tree plus
+   `ASSET_OBJECTS.json`/`SHA256SUMS.txt` has been uploaded to the dataset above;
+   the repository's automatically generated `.gitattributes` is unrelated
+   metadata.
 
 3. Audit the remote objects with one HEAD and one single-byte Range request per
    registered object. The auditor constructs URLs only from `object_path` and
@@ -66,7 +86,7 @@ remote audit has passed.
    ```bash
    python3 scripts/audit_v03_remote_assets.py \
      --asset-objects /path/to/bted-v03-public-objects/ASSET_OBJECTS.json \
-     --origin-base https://assets.example.org/bted/v0.2.0 \
+     --origin-base https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38 \
      --output /path/to/bted-v03-public-objects/REMOTE_ASSET_AUDIT.json
    ```
 
@@ -102,7 +122,19 @@ remote audit has passed.
    origin `verified` only when all 164 required assets pass; the 47
    `external_link_only`/private assets remain `supports_range=false`. It then
    rebuilds bundle checksums and runs the existing offline bundle verifier.
-   This still does not write PostgreSQL or perform promotion.
+   This still does not write PostgreSQL or perform promotion. The pinned
+   revision bundle verified in this handoff has `asset_origin_status=verified`;
+   an earlier bundle using mutable `resolve/main` is superseded and must not be
+   used as the final handoff.
+
+## Remaining gates
+
+- Run the real PostgreSQL/container import smoke and count audit in an isolated
+  environment; do not connect this evidence step to production or promote.
+- Complete Render/Neon/Vercel deployment smoke tests and package the lightweight
+  JBrowse shell/configuration separately.
+- Define and review the `endpoint_gene_context` algorithm; it remains zero.
 
 The audit script's injected transport and focused tests are for offline code
-verification only. They are not evidence that any remote origin is reachable.
+verification only. The committed report above is the real pinned-origin
+evidence; it is not a database promotion or a production deployment.
