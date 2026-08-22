@@ -383,7 +383,8 @@ async function jbrowseConfig(request, env, release, accession, sourceId) {
     if (!source || source.release_status !== "published_standardized" || Number(track.is_public) !== 1 || !track.asset_key) continue;
     const bed = await publicAsset(env, release.release_version, track.asset_key);
     if (!bed) continue;
-    publicTracks.push({ track, source, bed });
+    const sourceAssets = await allAssets(env, release.release_version, null, source.source_id);
+    publicTracks.push({ track, source, bed, sourceAssets });
   }
   if (!publicTracks.length) return json({ error: "jbrowse_unavailable", reason: "no public published endpoint track" }, 404);
   const assemblyName = `BTED_${accession.replaceAll(".", "_")}`;
@@ -396,16 +397,47 @@ async function jbrowseConfig(request, env, release, accession, sourceId) {
   const length = Number(contig?.length_bp || center + 1000);
   const regionStart = Math.max(0, center - 501);
   const regionEnd = Math.min(length, center + 500);
-  const tracksConfig = publicTracks.map(({ track, source, bed }) => ({
-    type: "FeatureTrack",
-    trackId: track.track_id,
-    name: `${source.source_id} · ${track.assay}`,
-    adapter: { type: "BedAdapter", bedLocation: { uri: assetUrl(request, bed.asset_key), locationType: "UriLocation" } },
-    category: ["BTED source tracks", source.source_id],
-    assemblyNames: [assemblyName],
-    metadata: { source_id: source.source_id, evidence_class: source.evidence_class, record_count: source.record_count, pmid: track.pmid, doi: track.doi, raw_accessions: JSON.parse(track.raw_accessions_json || "[]"), release_version: release.release_version },
-    displays: [{ type: "LinearBasicDisplay", displayId: `${track.track_id}_display`, showLabels: false, height: 38 }],
-  }));
+  const tracksConfig = [];
+  for (const { track, source, bed, sourceAssets } of publicTracks) {
+    const rawAccessions = JSON.parse(track.raw_accessions_json || "[]");
+    const metadata = {
+      source_id: source.source_id,
+      evidence_class: source.evidence_class,
+      record_count: source.record_count,
+      publication_title: track.paper_title,
+      PubMed: track.pmid ? `https://pubmed.ncbi.nlm.nih.gov/${track.pmid}/` : null,
+      DOI: track.doi ? `https://doi.org/${track.doi}` : null,
+      raw_data_accessions: rawAccessions.map((item) => item.accession).join(", "),
+      raw_data_links: rawAccessions.map((item) => item.external_url).filter(Boolean).join(" ; "),
+      BTED_record: new URL(`/records/${encodeURIComponent(source.source_id)}.html`, request.url).href,
+      release_version: release.release_version,
+    };
+    for (const [strand, label] of [["forward", "+"], ["reverse", "-"]]) {
+      const signal = sourceAssets.find((asset) => asset.asset_kind === "bigwig" && asset.logical_path.endsWith(`signal.${strand}.bw`) && Number(asset.is_public) === 1);
+      if (!signal) continue;
+      const signalId = `${track.track_id}_${strand}_signal`;
+      tracksConfig.push({
+        type: "QuantitativeTrack",
+        trackId: signalId,
+        name: `${source.source_id} · raw 3′-end signal (${label} strand)`,
+        adapter: { type: "BigWigAdapter", bigWigLocation: { uri: assetUrl(request, signal.asset_key), locationType: "UriLocation" } },
+        category: ["BTED experimental signal", source.source_id],
+        assemblyNames: [assemblyName],
+        metadata: { ...metadata, signal_values: "Raw repository values; not normalized by BTED", strand: label },
+        displays: [{ type: "LinearWiggleDisplay", displayId: `${signalId}_display` }],
+      });
+    }
+    tracksConfig.push({
+      type: "FeatureTrack",
+      trackId: track.track_id,
+      name: `${source.source_id} · ${track.assay} endpoints`,
+      adapter: { type: "BedAdapter", bedLocation: { uri: assetUrl(request, bed.asset_key), locationType: "UriLocation" } },
+      category: ["BTED endpoint tracks", source.source_id],
+      assemblyNames: [assemblyName],
+      metadata,
+      displays: [{ type: "LinearBasicDisplay", displayId: `${track.track_id}_display`, showLabels: false, height: 38 }],
+    });
+  }
   const configTracks = [];
   if (gff && tbi) {
     configTracks.push({
@@ -421,13 +453,13 @@ async function jbrowseConfig(request, env, release, accession, sourceId) {
   configTracks.push(...tracksConfig);
   const sessionTracks = configTracks.map((track, index) => ({
     id: `bted_track_${index + 1}`,
-    type: "FeatureTrack",
+    type: track.type,
     configuration: track.trackId,
     minimized: false,
     displays: [{
       id: `bted_display_${index + 1}`,
-      type: "LinearBasicDisplay",
-      configuration: `${track.trackId}-LinearBasicDisplay`,
+      type: track.type === "QuantitativeTrack" ? "LinearWiggleDisplay" : "LinearBasicDisplay",
+      configuration: track.displays?.[0]?.displayId || `${track.trackId}-LinearBasicDisplay`,
     }],
   }));
   return json({

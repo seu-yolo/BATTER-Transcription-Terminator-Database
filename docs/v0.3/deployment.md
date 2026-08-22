@@ -10,13 +10,13 @@ JBrowse config 和登记资产的同源 GET/HEAD/单 Range 代理。现有 FastA
 - canonical `release_version` 保持 `v0.2.0`；D1 行的 `status=preview` 只是查询投影，
   不是 promotion 或新的 `v0.3.0` data release。
 - verified bundle 来源为固定 Hugging Face revision：
-  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38`。
+  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`。
 - bundle materializes 22 sources、20 release assemblies、49 contigs、32 accessions、
-  211 registered assets（164 public）、22 tracks 和 28,399 endpoints；19 sources
+  211 registered assets（208 public）、22 tracks 和 28,399 endpoints；19 sources
   qualify for source-level augmentation。source annotations 保留在 HF/metadata asset，
   genes 未进入 D1，因为当前 catalogue 页面/API 不查询它们。
-- 164 public objects 已由固定 revision 的真实 audit 通过 HEAD 200 + 单 Range 206；
-  private/external 47 项只留 D1 登记和不可代理状态。
+- 208 public objects 已由固定 revision 的真实 audit 通过 HEAD 200 + 单 Range 206；
+  private/external 3 项 S1_002 audit-only 对象只留 D1 登记和不可代理状态。
 
 ## Worker 配置
 
@@ -102,7 +102,7 @@ CI=1 npx wrangler whoami
 
 认证成功；远程 D1 名称为 `bted-catalogue-v03-preview`，已导入并查询到 1 release、13
 publications、20 assemblies、49 contigs、22 sources、32 accessions、22 tracks、211
-assets（164 public）、28,399 endpoints 和 19 augmentation sources。远程 D1 实测库大小
+assets（208 public）、28,399 endpoints 和 19 augmentation sources。远程 D1 实测库大小
 约 32.78 MB，D1 行状态为 `v0.2.0/preview`，没有执行 promotion。
 
 Worker + Static Assets 已部署到：
@@ -115,6 +115,12 @@ source/assembly/endpoint detail、JBrowse config 均 `200`；固定 HF FASTA/BED
 asset 为 `404`；任意 `?url=` 为 `400`。Worker Static Assets 的 `.html` 入口会返回
 Cloudflare clean-URL `307`，浏览器跟随后 `/sources`、`/catalog`、`/accession-range-demo`
 等科研页面均 `200` 且内容非空；页面没有 localhost/旧 local API 引用。
+
+2026-08-23 资产级许可修正后，HF 固定 revision 更新为
+`463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`，208/208 public objects 通过 HEAD 200 与
+Range 206。四个 Lalanne Rend-seq 来源恢复 reference、BED、原始正负链 BigWig；S1_002 的
+3 个 audit-only objects 仍不公开。JBrowse source tracks 的 metadata 现提供 PubMed、DOI、
+GEO/raw accession 与 BTED record URL，信号按仓库原值展示，不做 BTED 归一化。
 
 ### JBrowse shell 与真实浏览器 smoke
 

@@ -1160,6 +1160,31 @@ assembly list/detail 现在返回同一 release 的 `gene_count`；新增 `/gene
 和 1-based start 区间过滤。列表提供 gene detail 与 assembly context 入口，导航增加 Genes。
 本轮只呈现 GFF-derived annotation，不计算 `endpoint_gene_context`，也未修改生物数据。
 
+## 2026-08-23 —— Lalanne 四来源资产级许可修正与 JBrowse 恢复
+
+1. 复现 `BATTER_S1_001` JBrowse 404，定位为文章开放获取状态被错误扩展到所有数据资产：
+   FASTA/FAI/GFF3/TBI、BED 和 BigWig 均被标为 `external_link_only`。
+2. 新增 `data/registry/batter_s1_asset_redistribution.v0.3.tsv`，按资产类型记录许可：NCBI
+   reference、GEO signal、BTED standardized output 可公开；作者特异补充字段继续排除。
+   没有修改端点坐标、证据类别、参考版本或 S1_002 的 audit-only 边界。
+3. 重新生成 105 行 JBrowse inventory；materialized 仍为 211 assets，public 从 164 增至
+   208，private 仅剩 S1_002 的 3 个 metadata/checksum objects。HF 新固定 revision 为
+   `463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`，208/208 对象通过 HEAD 200 与单字节
+   Range 206；audit 文件 SHA-256 为
+   `8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`。
+4. Cloudflare D1 以 `migrations/0002_restore_lalanne_assets.sql` 定向更新四个来源、相关
+   tracks 与 assets，没有删除或重导 endpoints。Worker 更新 HF revision 并重新部署。
+5. 动态 JBrowse 现在为四个 Rend-seq 来源展示 reference gene、原始 +/− strand BigWig
+   和独立 endpoint BED；信号未由 BTED 归一化。每个 source track metadata 提供论文题目、
+   PubMed、DOI、GEO/raw accession 与 BTED record URL。
+6. 线上 E. coli 真实页面加载成功；FASTA、BED、forward BigWig 均 HEAD 200、Range 206，
+   返回 1 byte。首次部署的 Worker 500 源于 gene track 没有显式 displays 数组，已用正常
+   display fallback 修复并保留问题记录。
+7. 最终回归：127 tests PASS（3 个可选 FastAPI tests skipped），ingestion 4/4 PASS，site
+   validator、Worker syntax 与 `git diff --check` PASS。四个修复来源的 config 均 HTTP 200，
+   各含 gene、raw + signal、raw − signal、endpoint 四条 track；远程 D1 为 211 assets =
+   208 public + 3 private。
+
 ## 2026-08-22 —— v0.3 Hugging Face public asset handoff：固定 revision 完成
 
 **范围：** 只上传并审计已登记的 public objects；没有上传 private/external objects，没有

@@ -23,8 +23,9 @@ DEFAULT_REGISTRY = REPO_ROOT / "data" / "registry" / "batter_s1_source_registry.
 DEFAULT_SOURCE_MANIFESTS = REPO_ROOT / "data" / "registry" / "manifests"
 DEFAULT_TSV = REPO_ROOT / "data" / "registry" / "jbrowse_assets.v0.2.0.tsv"
 DEFAULT_JSON = REPO_ROOT / "data" / "registry" / "jbrowse_assets.v0.2.0.json"
+DEFAULT_ASSET_POLICY = REPO_ROOT / "data" / "registry" / "batter_s1_asset_redistribution.v0.3.tsv"
 RELEASE_VERSION = "v0.2.0"
-GENERATOR_VERSION = "bted-jbrowse-asset-inventory-0.1.0"
+GENERATOR_VERSION = "bted-jbrowse-asset-inventory-0.2.0"
 
 TSV_COLUMNS = (
     "asset_id",
@@ -50,6 +51,29 @@ RAW_BIGWIG_SOURCES = {
     "BATTER_S1_004",
     "BATTER_S1_005",
 }
+
+
+def _asset_policy(path: Path = DEFAULT_ASSET_POLICY) -> dict[tuple[str, str], dict[str, str]]:
+    if not path.is_file():
+        return {}
+    with path.open(encoding="utf-8", newline="") as handle:
+        return {
+            (row["source_id"], row["asset_scope"]): row
+            for row in csv.DictReader(handle, delimiter="\t")
+        }
+
+
+def _asset_decision(
+    policies: dict[tuple[str, str], dict[str, str]],
+    source_id: str,
+    scope: str,
+    fallback: str,
+) -> tuple[str, bool]:
+    row = policies.get((source_id, scope))
+    if not row:
+        return fallback, fallback == "verified_redistributable"
+    status = row["redistribution_status"].strip()
+    return status, row["is_public"].strip().lower() == "true"
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -236,6 +260,7 @@ def _assembly_candidates(
 def _assembly_rows(
     bundle: Path,
     candidates: dict[str, dict[str, Any]],
+    policies: dict[tuple[str, str], dict[str, str]],
 ) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
     by_assembly: dict[str, list[dict[str, Any]]] = {}
     for candidate in candidates.values():
@@ -261,6 +286,9 @@ def _assembly_rows(
         deduplicated = len(selected) == 1 and len(group) > 1
         for candidate in selected:
             source_id = candidate["source_id"]
+            redistribution_status, is_public = _asset_decision(
+                policies, source_id, "reference", candidate["redistribution_status"]
+            )
             source_suffix = "" if deduplicated or len(group) == 1 else f"--{source_id}"
             for kind, role, filename in (
                 ("fasta", "reference_fasta", "reference.fna"),
@@ -284,7 +312,8 @@ def _assembly_rows(
                     object_path=object_path,
                     path=path,
                     bundle_path=bundle_path,
-                    redistribution_status=candidate["redistribution_status"],
+                    redistribution_status=redistribution_status,
+                    is_public=is_public,
                 ))
     return rows, dedup
 
@@ -294,6 +323,7 @@ def _canonical_rows(
     source_rows: dict[str, dict[str, str]],
     source_manifests: dict[str, dict[str, Any]],
     release_root: Path,
+    policies: dict[tuple[str, str], dict[str, str]],
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for source_id in sorted(release.get("sources", {})):
@@ -306,6 +336,10 @@ def _canonical_rows(
         canonical_path = f"records/{source_id}/endpoints.bed"
         if not canonical.is_file():
             raise FileNotFoundError(canonical)
+        fallback = _manifest_redistribution(release_root / "records" / source_id / "manifest.json")
+        redistribution_status, is_public = _asset_decision(
+            policies, source_id, "bted_standardized_output", fallback
+        )
         rows.append(_make_row(
             asset_id=f"{RELEASE_VERSION}--source-{source_id}--endpoints-bed",
             source_id=source_id,
@@ -315,9 +349,8 @@ def _canonical_rows(
             object_path=canonical_path,
             path=canonical,
             canonical_path=canonical_path,
-            redistribution_status=_manifest_redistribution(
-                release_root / "records" / source_id / "manifest.json"
-            ),
+            redistribution_status=redistribution_status,
+            is_public=is_public,
         ))
     return rows
 
@@ -327,6 +360,7 @@ def _bigwig_rows(
     source_rows: dict[str, dict[str, str]],
     source_manifests: dict[str, dict[str, Any]],
     release_root: Path,
+    policies: dict[tuple[str, str], dict[str, str]],
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for source_id in sorted(RAW_BIGWIG_SOURCES):
@@ -346,6 +380,10 @@ def _bigwig_rows(
                 raise ValueError(f"{source_id}: BigWig track has no forward/reverse label")
             path = _relative_path(bundle, uri)
             bundle_path = path.relative_to(bundle).as_posix()
+            fallback = _manifest_redistribution(release_root / "records" / source_id / "manifest.json")
+            redistribution_status, is_public = _asset_decision(
+                policies, source_id, "experimental_signal", fallback
+            )
             rows.append(_make_row(
                 asset_id=f"{RELEASE_VERSION}--source-{source_id}--signal-{strand}-bigwig",
                 source_id=source_id,
@@ -355,9 +393,8 @@ def _bigwig_rows(
                 object_path=f"tracks/{source_id}/signal.{strand}.bw",
                 path=path,
                 bundle_path=bundle_path,
-                redistribution_status=_manifest_redistribution(
-                    release_root / "records" / source_id / "manifest.json"
-                ),
+                redistribution_status=redistribution_status,
+                is_public=is_public,
             ))
     return rows
 
@@ -368,18 +405,20 @@ def build_inventory(
     release_root: Path = DEFAULT_RELEASE,
     registry_path: Path = DEFAULT_REGISTRY,
     source_manifests_path: Path = DEFAULT_SOURCE_MANIFESTS,
+    asset_policy_path: Path = DEFAULT_ASSET_POLICY,
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
     bundle = bundle.resolve()
     release_root = release_root.resolve()
     source_rows = _source_rows(registry_path)
     source_manifests = _source_manifest_rows(source_manifests_path)
+    policies = _asset_policy(asset_policy_path)
     release = json.loads((release_root / "release_manifest.json").read_text(encoding="utf-8"))
     if release.get("release_version") != RELEASE_VERSION:
         raise ValueError("canonical release version is not v0.2.0")
     candidates = _assembly_candidates(bundle, source_rows, source_manifests, release_root)
-    assembly_rows, dedup = _assembly_rows(bundle, candidates)
-    canonical_rows = _canonical_rows(release, source_rows, source_manifests, release_root)
-    bigwig_rows = _bigwig_rows(bundle, source_rows, source_manifests, release_root)
+    assembly_rows, dedup = _assembly_rows(bundle, candidates, policies)
+    canonical_rows = _canonical_rows(release, source_rows, source_manifests, release_root, policies)
+    bigwig_rows = _bigwig_rows(bundle, source_rows, source_manifests, release_root, policies)
     rows = sorted(
         assembly_rows + canonical_rows + bigwig_rows,
         key=lambda row: row["asset_id"],
@@ -408,6 +447,10 @@ def build_inventory(
         "assembly_accessions": sorted({row["assembly_accession"] for row in assembly_rows}),
         "source_ids": sorted({row["source_id"] for row in canonical_rows}),
         "raw_bigwig_source_ids": sorted(RAW_BIGWIG_SOURCES),
+        "asset_redistribution_policy": {
+            "path": asset_policy_path.resolve().relative_to(REPO_ROOT.resolve()).as_posix(),
+            "sha256": sha256(asset_policy_path),
+        },
         "deduplicated_shared_references": dedup,
         "excluded": {
             "source_ids": ["BATTER_S1_002"],
@@ -450,6 +493,7 @@ def main() -> int:
     parser.add_argument("--release-root", type=Path, default=DEFAULT_RELEASE)
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
     parser.add_argument("--source-manifests", type=Path, default=DEFAULT_SOURCE_MANIFESTS)
+    parser.add_argument("--asset-policy", type=Path, default=DEFAULT_ASSET_POLICY)
     parser.add_argument("--output-tsv", type=Path, default=DEFAULT_TSV)
     parser.add_argument("--output-json", type=Path, default=DEFAULT_JSON)
     args = parser.parse_args()
@@ -458,6 +502,7 @@ def main() -> int:
         release_root=args.release_root,
         registry_path=args.registry,
         source_manifests_path=args.source_manifests,
+        asset_policy_path=args.asset_policy,
     )
     write_inventory(rows, provenance, args.output_tsv, args.output_json)
     print(f"PASS {len(rows)} assets -> {args.output_tsv}")

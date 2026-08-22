@@ -20,6 +20,10 @@
     "GCF_015710995.1",
     "GCF_018282115.1"
   ],
+  "asset_redistribution_policy": {
+    "path": "data/registry/batter_s1_asset_redistribution.v0.3.tsv",
+    "sha256": "af395b81cab15b4af1e082db3ef2a20f1c500000eefcd1adfa0f229456934178"
+  },
   "bundle_basename": "BTED-v0.2.0-jbrowse",
   "canonical_release_root": "data/public/v0.2.0",
   "counts": {
@@ -60,7 +64,7 @@
     ]
   },
   "generator": "scripts/build_v03_jbrowse_asset_inventory.py",
-  "generator_version": "bted-jbrowse-asset-inventory-0.1.0",
+  "generator_version": "bted-jbrowse-asset-inventory-0.2.0",
   "raw_bigwig_source_ids": [
     "BATTER_S1_001",
     "BATTER_S1_003",
@@ -94,7 +98,7 @@
     "BATTER_S1_022"
   ],
   "supports_range": false,
-  "tsv_byte_size": 33673,
+  "tsv_byte_size": 33813,
   "tsv_path": "data/registry/jbrowse_assets.v0.2.0.tsv",
-  "tsv_sha256": "3e00e34ade383fc53b01ced58fbc0c5f74bcdeddb080c913274c7d8cabe68276"
+  "tsv_sha256": "97100833876f309eb3c2cc638beb09f6d85f93afe3193b34c3a69ef32a85b3db"
 }

@@ -208,7 +208,7 @@ assembly；BED/BigWig 只关联 source；S1_002 不产生浏览器资产。
 `asset_origin_status=planned_not_verified`，所有资产 `supports_range=false`；这是上传前
 bundle 的安全默认值。当前 canonical `release_version=v0.2.0` 的 public object handoff
 已经在 Hugging Face dataset `seu-yolo/BTED-v0.3-assets` 的固定 revision
-`d12190e434057edaf2c2bdbf19132f1e41873c38` 完成 164/164 HEAD 200 + Range 206 审计，证据
+`463cfc8bd582a5ed9d2c426822148c3f1e56c4d0` 完成 208/208 HEAD 200 + Range 206 审计，证据
 位于 `data/registry/remote_asset_audit.v0.2.0-hf.json`。只有使用该报告离线 apply 生成的
 新 bundle 才能写成 `asset_origin_status=verified`；TSV 中
 `external_link_only` 行必须 `is_public=false`；这一步只准备可审计写库行，不表示 URL
@@ -399,9 +399,9 @@ python3 scripts/apply_v03_remote_asset_audit.py \
 
 该步骤从 materialized `assets.jsonl` 选择全部 `is_public=true` 且
 `redistribution_status=verified_redistributable` 的 required asset。当前 211 行中共有
-164 行：77 个 browser asset 加 87 个 canonical metadata/checksum/annotation 等小文件。
-tracked inventory 仅对 77 个 browser asset 做额外 provenance 核对，不能代替完整 required
-集合。audit 中 164 个对象必须与物化行的 `asset_id`、`object_path`/`logical_path`、
+208 行：105 个 browser asset 加 103 个 canonical metadata/checksum/annotation 等小文件。
+tracked inventory 仅对 105 个 browser asset 做额外 provenance 核对，不能代替完整 required
+集合。audit 中 208 个对象必须与物化行的 `asset_id`、`object_path`/`logical_path`、
 `byte_size`、`sha256` 完全一致，且 HEAD/Range 均通过。只有全部满足时才把这些行的
 `supports_range` 设为 `true` 并将 manifest 的
 `asset_origin_status` 改为 `verified`；private/`external_link_only` 行保持 `false`。

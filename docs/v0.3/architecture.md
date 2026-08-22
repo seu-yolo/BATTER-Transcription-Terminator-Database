@@ -40,7 +40,7 @@ v0.2 与 v0.3 并行存在：
 | Cloudflare Worker | `/api/*` catalogue/source/assembly/endpoint/augmentation API、动态 JBrowse config、登记资产 GET/HEAD/单 Range 代理；非 API 请求交给静态站点 | 不解释论文、不改变 endpoint evidence、不接受任意 URL |
 | Cloudflare D1 | canonical `v0.2.0` 的 preview 查询投影：release/publication/assembly/source/accession/track/asset/endpoint；由生成器批次重建 | 不取代 canonical release；不保存当前页面未使用的 `genes` 或 `source_annotations` 行；不做 promotion |
 | Worker Static Assets (`site/`) | 复用现有 BTED 静态 UX，使站点和 API 同一 Cloudflare deployment | 不复制科学数据到页面代码，不承担 D1 导入 |
-| Hugging Face 资产 | 大型 FASTA/FAI/GFF3/TBI、BED 和小型登记文件的固定 revision `seu-yolo/BTED-v0.3-assets@d12190e434057edaf2c2bdbf19132f1e41873c38` | 不作为未登记 URL 的开放代理，不改变对象内容；47 个 private/external 对象不上传 |
+| Hugging Face 资产 | 大型 FASTA/FAI/GFF3/TBI、BED 和小型登记文件的固定 revision `seu-yolo/BTED-v0.3-assets@463cfc8bd582a5ed9d2c426822148c3f1e56c4d0` | 不作为未登记 URL 的开放代理，不改变对象内容；3 个 audit-only/private 对象不上传 |
 
 FastAPI/PostgreSQL/Next.js 代码保留为 future/alternative：它们继续通过现有契约和测试维护，
 但不属于当前 Cloudflare deployment 的依赖。旧的 Render/Neon/Vercel 路线已停止，不应在本轮
@@ -155,11 +155,11 @@ D1/D2/D3 已实现 Next.js App Router 页面、客户端动态 `/explore`、动�
 基于真实 GFF/FAI 的 gene query；importer/materializer 和 PostgreSQL writer 也已实现真实
 GFF gene rows 的物化与批量写入。当前计数为 22 个来源（21 published + 1 audit-only）、
 20 个 release assembly records、19 个去重 published browser assemblies、28,399 个
-endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public objects）。
+endpoints、95,437 个 genes 和 211 个 materialized assets（208 个 public objects）。
 
 这些结果和测试包含本地与 Cloudflare preview 实测；Hugging Face 的真实固定 revision 远端证据另由
-`data/registry/remote_asset_audit.v0.2.0-hf.json` 保存（164/164 HEAD 200 + Range 206，
-164 对象共 126,280,212 bytes）。该证据对应 canonical `release_version=v0.2.0`，不代表
+`data/registry/remote_asset_audit.v0.2.0-hf.json` 保存（208/208 HEAD 200 + Range 206，
+208 对象共 196,667,360 bytes）。该证据对应 canonical `release_version=v0.2.0`，不代表
 已发布 `v0.3.0` 数据。D1 local/remote import 与 Worker HTTP smoke 已完成；线上 preview URL
 为 `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`；单份 4.3.0
 JBrowse shell 已从既有 v0.2 bundle 提取到 `site/jbrowse/`（约 5.84 MiB，不含科学资产），

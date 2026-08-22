@@ -9,14 +9,14 @@ D1 batches 的脚本、完整 catalogue D1 schema、Cloudflare Worker API、Work
 登记 asset 的同源 GET/HEAD/Range 代理和动态 JBrowse config；现有 FastAPI/PostgreSQL/Next.js
 保留为 future/alternative。当前计数为 22 个来源（21 `published_standardized` + 1
 `audit_only`）、20 个 release assembly records、19 个去重 published browser assemblies、
-28,399 个 endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public
-objects）。本地 Wrangler 4.125 D1 实际导入为 1 release、13 publications、20 assemblies、
+28,399 个 endpoints、95,437 个 genes 和 211 个 materialized assets（208 个 public
+objects；3 个 S1_002 audit-only objects 保持 private）。本地 Wrangler 4.125 D1 实际导入为 1 release、13 publications、20 assemblies、
 49 contigs、22 sources、32 accessions、22 tracks、211 assets 和 28,399 endpoints；local
 SQLite state（含 WAL）约 68 MB。远程 preview D1 `bted-catalogue-v03-preview` 实际导入同一
 计数，数据库大小为 32.78 MB。Worker 已部署到
 `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`；线上 API、静态
 页面、JBrowse、HEAD/Range 和拒绝规则 smoke 均已通过。Hugging Face public object handoff
-已在固定 revision 完成 164/164 HEAD 200 + Range 206 审计；当前仍是免费 preview，不宣称
+已在固定 revision `463cfc8bd582a5ed9d2c426822148c3f1e56c4d0` 完成 208/208 HEAD 200 + Range 206 审计；当前仍是免费 preview，不宣称
 正式 v0.3.0 release。
 
 **最新 handoff 参考：** `96577c8`、`7dbd580`。
@@ -25,19 +25,19 @@ SQLite state（含 WAL）约 68 MB。远程 preview D1 `bted-catalogue-v03-previ
 HTTP/Range/JBrowse smoke 和 `git diff --check` 已通过；frontend `pnpm run check-contract`、
 `pnpm run build` 和站点 validator 也已通过。真实固定 revision 证据保存在
 `data/registry/remote_asset_audit.v0.2.0-hf.json`，SHA-256 为
-`3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
+`8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`。
 
 ## 2026-08-22–23 v0.3 Cloudflare catalogue preview
 
 - 当前部署配置是 `prototype/accession-range/wrangler.jsonc`：Worker + D1 binding
   `BTED_DB` + `site/` Static Assets；HF origin 固定到 revision
-  `d12190e434057edaf2c2bdbf19132f1e41873c38`。Render/Neon/Vercel 路线已停止，FastAPI/
+  `463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`。Render/Neon/Vercel 路线已停止，FastAPI/
   PostgreSQL/Next.js 代码仅保留为 future/alternative。
 - `scripts/generate_bted_d1.py` 从 verified bundle 生成外部临时 SQL 批次，不提交大 seed。
   D1 只保存用户当前查询所需的 release/publication/assembly/contig/source/accession/
   asset/track/endpoint；source annotations 保持 HF/metadata assets，genes 暂不入库。
 - 本地 D1 真实导入最终行数：1 release、13 publication、20 assembly、49 contig、22 source、
-  32 accession、22 track、211 asset（164 public）和 28,399 endpoint；SQLite 主库约 31 MB，
+  32 accession、22 track、211 asset（208 public）和 28,399 endpoint；SQLite 主库约 31 MB，
   含 WAL 的 local state 约 68 MB。首次批次显式事务被 Wrangler 拒绝，已移除生成器的
   `BEGIN/COMMIT`，重跑后全量导入成功。
 - 有界 Worker HTTP smoke 已验证 health/stats/catalogue/source/assembly/endpoint/augmentation/
@@ -47,7 +47,7 @@ HTTP/Range/JBrowse smoke 和 `git diff --check` 已通过；frontend `pnpm run c
 - `CI=1 npx wrangler whoami` 已在非交互模式确认认证成功；远程 D1
   `bted-catalogue-v03-preview` 已按 schema 和顺序批量导入，远程计数为 1 release、13
   publications、20 assemblies、49 contigs、22 sources、32 accessions、22 tracks、211
-  assets（164 public）和 28,399 endpoints，远程 D1 大小约 32.78 MB。
+  assets（208 public）和 28,399 endpoints，远程 D1 大小约 32.78 MB。
 - Worker + Static Assets 已部署到
   `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`。线上验证覆盖
   `/api/health`、stats、catalogue、sources、assemblies、endpoints、augmentation、source/
@@ -55,6 +55,11 @@ HTTP/Range/JBrowse smoke 和 `git diff --check` 已通过；frontend `pnpm run c
   206、`remote-data` alias；未知/private asset 返回 404，任意 `?url=` 返回 400。首页、
   `sources.html`、`catalog.html`、`accession-range-demo.html`（跟随 clean-path 重定向后）
   均返回非空 200，页面未发现旧 localhost/API 入口。
+- 2026-08-23 对 Lalanne 四来源执行资产级许可修正：NCBI reference、GEO/Mendeley signal
+  与 BTED 标准输出恢复公开，作者特异补充字段继续不复制。`BATTER_S1_001/003/004/005`
+  的动态 JBrowse 均恢复；配置新增原始正负链 BigWig、独立 BED endpoint track，以及 PubMed、
+  DOI、GEO 和 BTED record metadata 链接。线上 E. coli 实测 FASTA/BED/BigWig HEAD 200、
+  Range 206，真实 JBrowse 页面加载 gene、两条 raw signal 和 endpoint track。
 
 ## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
 
@@ -499,10 +504,10 @@ preflight/load-order tests；CI 没有本地大 bundle 时 real-count test 会 s
 
 以下记录保留审计前的准备状态；它已由下面的固定 revision 完成交接记录取代。
 
-- tracked inventory：105 行、19 个唯一 assembly；其中 77 个 browser 对象为
+- tracked inventory：105 行、19 个唯一 assembly；其中 105 个 browser 对象为
   `verified_redistributable`/`is_public=true`。带 inventory 的 planned materialized
-  bundle 有 211 个 asset 行，完整发布集合为 164 个
-  `verified_redistributable`/`is_public=true` 对象，另有 47 个 private/external 行。
+  bundle 有 211 个 asset 行，完整发布集合为 208 个
+  `verified_redistributable`/`is_public=true` 对象，另有 3 个 audit-only/private 行。
   其中 87 个是 inventory 之外的 canonical metadata/checksum/annotation 等 API 小文件。
 - 当前真实 GFF/FAI 物化结果：95,437 genes，`endpoint_gene_context=0`。
 - `scripts/prepare_v03_public_asset_objects.py` 生成 `ASSET_OBJECTS.json` 和对象树；
@@ -511,7 +516,7 @@ preflight/load-order tests；CI 没有本地大 bundle 时 real-count test 会 s
   `ok`，不上传、不重试、不缓存、不接受清单外 URL。
 - 维护者的实际操作顺序见 [`docs/v0.3/deploy-assets.md`](v0.3/deploy-assets.md)。
   77/77 只代表 browser subset；全局 bundle/import verification 需要 materialized
-  assets 中全部 164 个 public+verified 对象通过，才能考虑
+  assets 中全部 208 个 public+verified 对象通过，才能考虑
   `asset_origin_status=verified`；不能手工把 `supports_range` 改成 true。
 - CI 现在显式运行 gene/object preparation/remote-audit 专项测试，并对这些脚本和
   `backend/importer` 的 canonical/materialize/postgres Python 文件执行 `py_compile`。
@@ -521,11 +526,11 @@ preflight/load-order tests；CI 没有本地大 bundle 时 real-count test 会 s
 `scripts/apply_v03_remote_asset_audit.py` 是 audit 与 PostgreSQL writer 之间的离线步骤。
 输入 planned materialized bundle、`REMOTE_ASSET_AUDIT.json` 和 tracked browser inventory，
 输出新的 checksum-complete bundle。required 集合来自 materialized asset table 当前全部
-164 个 public+verified 行（77 browser + 87 canonical small assets）；tracked inventory
-只核对 browser provenance。只有 164/164 的 asset ID、对象路径、大小、SHA-256、HEAD 200
+208 个 public+verified 行（105 browser + 103 canonical small assets）；tracked inventory
+只核对 browser provenance。只有 208/208 的 asset ID、对象路径、大小、SHA-256、HEAD 200
 与 Range 206 均匹配时，manifest 才成为 `asset_origin_status=verified`；external/private
 asset 继续保持 Range=false。当前 prepare 脚本已从完整 materialized `assets.jsonl` 生成
-164-object manifest，77 个 browser 行仅作为 inventory provenance cross-check。此步骤不上传、不联网、
+208-object manifest，105 个 browser 行仅作为 inventory provenance cross-check。此步骤不上传、不联网、
 不写数据库，也不代表 promotion 已执行。audit/apply focused 8/8 PASS，另有
 prepare focused 2/2 PASS。默认环境全量 `unittest discover` 当前为 123 tests
 （3 个可选 FastAPI runtime skipped）。
@@ -537,14 +542,14 @@ Materializer `bted-materializer-0.3.0-b2` 已统一所有 asset origin 为
 ## v0.3 Hugging Face public asset handoff complete（2026-08-22）
 
 - Public dataset：`https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets`。
-- Immutable revision：`d12190e434057edaf2c2bdbf19132f1e41873c38`；pinned origin 为
-  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38`。
+- Immutable revision：`463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`；pinned origin 为
+  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`。
 - Canonical `release_version` 保持 `v0.2.0`；本次不是新的 `v0.3.0` 数据 release。
-- 164 个 public objects、总计 126,280,212 bytes；47 个 private/external objects 未上传。
-- 固定 revision 的真实远端 audit 为 164/164：每项 HEAD `200`、Range `206`、
+- 208 个 public objects、总计 196,667,360 bytes；3 个 audit-only/private objects 未上传。
+- 固定 revision 的真实远端 audit 为 208/208：每项 HEAD `200`、Range `206`、
   `Content-Range` 与登记大小一致、返回一个字节。
 - 已将报告纳入 `data/registry/remote_asset_audit.v0.2.0-hf.json`；SHA-256：
-  `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
+  `8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`。
 - pinned verified bundle manifest SHA-256：
   `849876269dd1827014f1a75daacd2fdf418c642eb96fd39984d58641913f2264`。verified bundle
   本身是本机临时交接物，路径不写入仓库，也不作为远端对象上传。
@@ -558,7 +563,7 @@ generator/schema、Cloudflare Worker catalogue API、同源 asset proxy、动态
 Next.js pages、客户端动态 Explore 和 GFF-derived gene query。真实数据计数为 22 个来源
 （21 published + 1 audit-only）、20 个 release assembly records、19 个去重 published browser
 assemblies、28,399 个 endpoints、95,437 个 genes，以及 211 个 materialized assets，其中
-164 个 public objects 已在上述固定 HF revision 完成远端验证。Cloudflare local D1、远程
+208 个 public objects 已在上述固定 HF revision 完成远端验证。Cloudflare local D1、远程
 preview D1 与线上 Worker smoke 已完成；报告位于
 `data/registry/remote_asset_audit.v0.2.0-hf.json`；local simulated audit 仍不替代该真实
 pinned-origin evidence。

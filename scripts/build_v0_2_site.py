@@ -199,9 +199,9 @@ def browser_reading_guide(assays: list[str]) -> str:
     if not any("rend-seq" in assay.lower() for assay in assays):
         return ""
     return """
-    <section class="panel browser-guide"><div class="panel-header"><div><p class="eyebrow">Genome browser guide</p><h2>Read both strands in one compact view</h2></div><span class="browser-guide-hint">Click a candidate for details</span></div>
-      <div class="strand-legend" aria-label="Strand colour legend"><div><span class="strand-swatch plus"></span><strong>+ strand</strong><span>blue signal above zero · arrows point right</span></div><div><span class="strand-swatch minus"></span><strong>− strand</strong><span>orange signal below zero · arrows point left</span></div></div>
-      <p class="section-note"><strong>Important:</strong> values below zero are a display convention for the − strand, not negative abundance. Candidate marks are local signal peaks, not automatically proven terminators. Click a mark to inspect its stable ID, 1-based coordinate, strand, raw support and evidence warning.</p>
+    <section class="panel browser-guide"><div class="panel-header"><div><p class="eyebrow">Genome browser guide</p><h2>Compare raw signal with reported endpoints</h2></div><span class="browser-guide-hint">Track menu: paper and raw-data links</span></div>
+      <div class="strand-legend" aria-label="Strand track legend"><div><span class="strand-swatch plus"></span><strong>+ strand signal</strong><span>raw repository values in a dedicated track</span></div><div><span class="strand-swatch minus"></span><strong>− strand signal</strong><span>raw repository values in a dedicated track</span></div></div>
+      <p class="section-note"><strong>Important:</strong> BTED does not normalize the displayed signal. The endpoint track remains separate from the two signal tracks. Open a source track menu to find the paper, PubMed/DOI, raw-data accession and BTED record links.</p>
     </section>"""
 
 

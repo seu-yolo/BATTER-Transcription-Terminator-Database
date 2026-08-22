@@ -103,6 +103,7 @@ JBROWSE_RAW_SIGNAL_SOURCES = {
     "BATTER_S1_004",
     "BATTER_S1_005",
 }
+ASSET_REDISTRIBUTION_POLICY = Path("data/registry/batter_s1_asset_redistribution.v0.3.tsv")
 
 
 class MaterializationError(RuntimeError):
@@ -737,6 +738,44 @@ def _merge_jbrowse_asset_inventory(
         "raw_signal_asset_count": len(signal_keys),
         "materialized_asset_count": len(combined),
         "asset_origin_status": "planned_not_verified",
+    }
+
+
+def _apply_v03_asset_redistribution_policy(
+    tables: dict[str, list[dict[str, Any]]],
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Apply reviewed asset-level publication decisions to v0.3 assets.
+
+    Article access is intentionally not reused as a blanket file licence.  The
+    tracked policy distinguishes public reference files, public repository
+    signals and BTED-standardized outputs from excluded author-specific fields.
+    """
+
+    policy_path = Path(str(snapshot["repo_root"])) / ASSET_REDISTRIBUTION_POLICY
+    if not policy_path.is_file():
+        return None
+    with policy_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    standardized = {
+        row["source_id"]: row
+        for row in rows
+        if row.get("asset_scope") == "bted_standardized_output"
+    }
+    updated = 0
+    for asset in tables["assets"]:
+        source_id = asset.get("source_id_ref")
+        decision = standardized.get(str(source_id))
+        if not decision or asset.get("asset_kind") not in {"metadata", "checksum"}:
+            continue
+        asset["redistribution_status"] = decision["redistribution_status"]
+        asset["is_public"] = decision["is_public"].strip().lower() == "true"
+        updated += 1
+    return {
+        "path": ASSET_REDISTRIBUTION_POLICY.as_posix(),
+        "sha256": sha256_file(policy_path),
+        "row_count": len(rows),
+        "updated_canonical_metadata_assets": updated,
     }
 
 
@@ -1425,6 +1464,7 @@ def materialize_release(
     canonical_asset_count = len(tables["assets"])
     canonical_contig_count = len(tables["contigs"])
     inventory_summary: dict[str, Any] | None = None
+    asset_policy_summary: dict[str, Any] | None = None
     gene_import_summary: dict[str, Any] = {
         "enabled": False,
         "gene_count": 0,
@@ -1444,6 +1484,7 @@ def materialize_release(
             inventory_candidate,
             origin_base,
         )
+        asset_policy_summary = _apply_v03_asset_redistribution_policy(tables, snapshot)
         if jbrowse_bundle_root is not None:
             bundle_root = Path(jbrowse_bundle_root).expanduser()
             if not bundle_root.is_absolute():
@@ -1530,6 +1571,8 @@ def materialize_release(
     }
     if inventory_summary is not None:
         manifest["jbrowse_asset_inventory"] = inventory_summary
+    if asset_policy_summary is not None:
+        manifest["asset_redistribution_policy"] = asset_policy_summary
     final_manifest = _atomic_write_bundle(output_path, tables, manifest)
     return MaterializationResult(output_path, final_manifest)
 

@@ -11,22 +11,22 @@ remain separate gates.
 
 - The tracked browser inventory has 105 rows spanning 19 unique assemblies.
 - The planned materialized bundle has 211 asset rows. The preparation policy
-  selects all 164 rows with `is_public=true` and
-  `redistribution_status=verified_redistributable`, and excludes 47 private or
+  selects all 208 rows with `is_public=true` and
+  `redistribution_status=verified_redistributable`, and excludes 3 audit-only/private
   external rows. The 77 inventory rows with the same public status are only a
   browser provenance cross-check; they are not the complete upload set.
 - The current local GFF/FAI materialization contains 95,437 genes and keeps
   `endpoint_gene_context` at zero.
 - The public dataset is [seu-yolo/BTED-v0.3-assets](https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets).
 - The immutable audited revision is
-  `d12190e434057edaf2c2bdbf19132f1e41873c38`; all URLs use
-  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38`.
-- The 164 public objects total 126,280,212 bytes. All 164 passed HEAD `200`
+  `463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`; all URLs use
+  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`.
+- The 208 public objects total 196,667,360 bytes. All 208 passed HEAD `200`
   with matching `Content-Length` and a single-byte Range `206` with the
   registered `Content-Range` and one returned byte.
 - The generated evidence is committed at
   `data/registry/remote_asset_audit.v0.2.0-hf.json` with SHA-256
-  `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`.
+  `8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`.
 - The verified bundle's manifest SHA-256 is
   `849876269dd1827014f1a75daacd2fdf418c642eb96fd39984d58641913f2264`.
   The final verified bundle itself is a local temporary handoff artifact and
@@ -49,7 +49,7 @@ release.
      --release-root data/public/v0.2.0 \
      --repo-root . \
      --output-dir /path/to/bted-v03-staging-with-browser \
-     --asset-origin-base https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38 \
+     --asset-origin-base https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/463cfc8bd582a5ed9d2c426822148c3f1e56c4d0 \
      --generated-at-utc 2026-08-22T00:00:00Z \
      --jbrowse-asset-inventory data/registry/jbrowse_assets.v0.2.0.tsv \
      --jbrowse-bundle-root /path/to/BTED-v0.2.0-jbrowse
@@ -64,7 +64,7 @@ release.
      --output-dir /path/to/bted-v03-public-objects
    ```
 
-   This produces `ASSET_OBJECTS.json`, `SHA256SUMS.txt`, and the 164-object
+   This produces `ASSET_OBJECTS.json`, `SHA256SUMS.txt`, and the 208-object
    `object_path` tree. `ASSET_OBJECTS.json` is selected from the materialized
    211-row asset table and records `asset_id`, `object_path`, `byte_size`, and
    `sha256` for every object. `--manifest-only` is useful for a dry preparation
@@ -73,7 +73,7 @@ release.
 2. Upload the copied object tree with the project-approved external/manual
    uploader. Preserve every `object_path` exactly, use the explicit immutable
    HTTPS origin base that will be given to the audit command, and do not upload
-   the 47 excluded objects. The 164-object tree plus
+   the 3 excluded audit-only objects. The 208-object tree plus
    `ASSET_OBJECTS.json`/`SHA256SUMS.txt` has been uploaded to the dataset above;
    the repository's automatically generated `.gitattributes` is unrelated
    metadata.
@@ -86,22 +86,22 @@ release.
    ```bash
    python3 scripts/audit_v03_remote_assets.py \
      --asset-objects /path/to/bted-v03-public-objects/ASSET_OBJECTS.json \
-     --origin-base https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/d12190e434057edaf2c2bdbf19132f1e41873c38 \
+     --origin-base https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/463cfc8bd582a5ed9d2c426822148c3f1e56c4d0 \
      --output /path/to/bted-v03-public-objects/REMOTE_ASSET_AUDIT.json
    ```
 
-   A successful full audit reports 164/164 objects. Each row must have the
+   A successful full audit reports 208/208 objects. Each row must have the
    registered size and SHA-256, HEAD `200` with matching `Content-Length`,
    Range `206`, `Content-Range: bytes 0-0/<size>`, one returned byte, and
    `supports_range=true`/`ok=true`. A non-zero exit still writes the audit
    report; fix the external object and rerun the audit.
 
-   The 77 browser rows remain visible in the preparation manifest as an
+   The 105 browser rows remain visible in the preparation manifest as an
    inventory cross-check; the other 87 public rows are canonical metadata,
    checksums, endpoint/annotation files and related small API assets selected by
    the same materialized table.
 
-4. Apply the completed 164-object report to a `planned_not_verified` materialized bundle
+4. Apply the completed 208-object report to a `planned_not_verified` materialized bundle
    in a new output directory. This step is offline: it compares every required
    public asset's `asset_id`, `object_path`, byte size and SHA-256, and
    requires recorded HEAD `200` plus Range `206` before setting
@@ -117,9 +117,9 @@ release.
 
    The command refuses an incomplete or mismatched report. It derives the
    required set from every materialized row with `is_public=true` and
-   `redistribution_status=verified_redistributable` (currently 164); the tracked
+   `redistribution_status=verified_redistributable` (currently 208); the tracked
    inventory separately verifies the 77-object browser subset. It marks the
-   origin `verified` only when all 164 required assets pass; the 47
+   origin `verified` only when all 208 required assets pass; the 47
    `external_link_only`/private assets remain `supports_range=false`. It then
    rebuilds bundle checksums and runs the existing offline bundle verifier.
    This still does not write PostgreSQL or perform promotion. The pinned

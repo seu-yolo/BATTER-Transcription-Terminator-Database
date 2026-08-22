@@ -58,7 +58,7 @@ def _write_materialized_bundle(root: Path, assets: list[dict[str, Any]]) -> Path
 
 @unittest.skipUnless(BUNDLE.is_dir() and INVENTORY.is_file(), "the frozen v0.2 JBrowse bundle is not available")
 class TestRealPublicAssetPlan(unittest.TestCase):
-    def test_real_materialized_bundle_selects_164_and_cross_checks_77_browser_objects(self) -> None:
+    def test_real_materialized_bundle_selects_208_and_cross_checks_105_browser_objects(self) -> None:
         module = _load_module()
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -88,12 +88,12 @@ class TestRealPublicAssetPlan(unittest.TestCase):
             )
             self.assertEqual(first["selection"], {
                 "policy": "materialized assets where is_public=true AND redistribution_status=verified_redistributable",
-                "selected_count": 164,
-                "excluded_count": 47,
+            "selected_count": 208,
+            "excluded_count": 3,
                 "materialized_asset_count": 211,
-                "public_browser_crosscheck_count": 77,
+            "public_browser_crosscheck_count": 105,
             })
-            self.assertEqual(len(first["objects"]), 164)
+            self.assertEqual(len(first["objects"]), 208)
             self.assertEqual((root / "first/ASSET_OBJECTS.json").read_bytes(), (root / "second/ASSET_OBJECTS.json").read_bytes())
             self.assertEqual((root / "first/SHA256SUMS.txt").read_bytes(), (root / "second/SHA256SUMS.txt").read_bytes())
             identities = {"asset_id", "object_path", "byte_size", "sha256"}
