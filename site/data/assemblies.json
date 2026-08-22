@@ -33,7 +33,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_001.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000005845.1/jbrowse-config?source_id=BATTER_S1_001",
       "assembly_page_url": "assemblies/GCF_000005845.1.html",
       "bed_url": "downloads/assemblies/GCF_000005845.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000005845.1/metadata.json"
@@ -107,7 +107,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_008.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000006765.1/jbrowse-config?source_id=BATTER_S1_008",
       "assembly_page_url": "assemblies/GCF_000006765.1.html",
       "bed_url": "downloads/assemblies/GCF_000006765.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000006765.1/metadata.json"
@@ -144,7 +144,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_006.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000006885.1/jbrowse-config?source_id=BATTER_S1_006",
       "assembly_page_url": "assemblies/GCF_000006885.1.html",
       "bed_url": "downloads/assemblies/GCF_000006885.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000006885.1/metadata.json"
@@ -181,7 +181,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_021.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000008685.2/jbrowse-config?source_id=BATTER_S1_021",
       "assembly_page_url": "assemblies/GCF_000008685.2.html",
       "bed_url": "downloads/assemblies/GCF_000008685.2/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000008685.2/metadata.json"
@@ -218,7 +218,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_003.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000009045.1/jbrowse-config?source_id=BATTER_S1_003",
       "assembly_page_url": "assemblies/GCF_000009045.1.html",
       "bed_url": "downloads/assemblies/GCF_000009045.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000009045.1/metadata.json"
@@ -255,7 +255,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_019.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000009725.1/jbrowse-config?source_id=BATTER_S1_019",
       "assembly_page_url": "assemblies/GCF_000009725.1.html",
       "bed_url": "downloads/assemblies/GCF_000009725.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000009725.1/metadata.json"
@@ -292,7 +292,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_010.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000009765.2/jbrowse-config?source_id=BATTER_S1_010",
       "assembly_page_url": "assemblies/GCF_000009765.2.html",
       "bed_url": "downloads/assemblies/GCF_000009765.2/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000009765.2/metadata.json"
@@ -329,7 +329,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_011.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000010605.1/jbrowse-config?source_id=BATTER_S1_011",
       "assembly_page_url": "assemblies/GCF_000010605.1.html",
       "bed_url": "downloads/assemblies/GCF_000010605.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000010605.1/metadata.json"
@@ -366,7 +366,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_004.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000022005.1/jbrowse-config?source_id=BATTER_S1_004",
       "assembly_page_url": "assemblies/GCF_000022005.1.html",
       "bed_url": "downloads/assemblies/GCF_000022005.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000022005.1/metadata.json"
@@ -403,7 +403,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_020.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000147055.1/jbrowse-config?source_id=BATTER_S1_020",
       "assembly_page_url": "assemblies/GCF_000147055.1.html",
       "bed_url": "downloads/assemblies/GCF_000147055.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000147055.1/metadata.json"
@@ -440,7 +440,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_022.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000195955.2/jbrowse-config?source_id=BATTER_S1_022",
       "assembly_page_url": "assemblies/GCF_000195955.2.html",
       "bed_url": "downloads/assemblies/GCF_000195955.2/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000195955.2/metadata.json"
@@ -477,7 +477,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_012.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000203835.1/jbrowse-config?source_id=BATTER_S1_012",
       "assembly_page_url": "assemblies/GCF_000203835.1.html",
       "bed_url": "downloads/assemblies/GCF_000203835.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000203835.1/metadata.json"
@@ -533,7 +533,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "assemblies/GCF_000739105.1.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000739105.1/jbrowse-config",
       "assembly_page_url": "assemblies/GCF_000739105.1.html",
       "bed_url": "downloads/assemblies/GCF_000739105.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_000739105.1/metadata.json"
@@ -570,7 +570,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_005.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_001456255.1/jbrowse-config?source_id=BATTER_S1_005",
       "assembly_page_url": "assemblies/GCF_001456255.1.html",
       "bed_url": "downloads/assemblies/GCF_001456255.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_001456255.1/metadata.json"
@@ -607,7 +607,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_009.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_003054575.1/jbrowse-config?source_id=BATTER_S1_009",
       "assembly_page_url": "assemblies/GCF_003054575.1.html",
       "bed_url": "downloads/assemblies/GCF_003054575.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_003054575.1/metadata.json"
@@ -644,7 +644,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_014.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_003932715.1/jbrowse-config?source_id=BATTER_S1_014",
       "assembly_page_url": "assemblies/GCF_003932715.1.html",
       "bed_url": "downloads/assemblies/GCF_003932715.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_003932715.1/metadata.json"
@@ -700,7 +700,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "assemblies/GCF_005519465.1.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_005519465.1/jbrowse-config",
       "assembly_page_url": "assemblies/GCF_005519465.1.html",
       "bed_url": "downloads/assemblies/GCF_005519465.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_005519465.1/metadata.json"
@@ -737,7 +737,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_016.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_015710995.1/jbrowse-config?source_id=BATTER_S1_016",
       "assembly_page_url": "assemblies/GCF_015710995.1.html",
       "bed_url": "downloads/assemblies/GCF_015710995.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_015710995.1/metadata.json"
@@ -774,7 +774,7 @@
           "interpretation_note_zh": ""
         }
       ],
-      "jbrowse_config_url": "BATTER_S1_018.config.json",
+      "jbrowse_config_url": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_018282115.1/jbrowse-config?source_id=BATTER_S1_018",
       "assembly_page_url": "assemblies/GCF_018282115.1.html",
       "bed_url": "downloads/assemblies/GCF_018282115.1/endpoints.bed",
       "metadata_url": "downloads/assemblies/GCF_018282115.1/metadata.json"

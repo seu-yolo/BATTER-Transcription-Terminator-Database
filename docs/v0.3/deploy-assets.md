@@ -137,7 +137,8 @@ release.
   import counts and online HEAD/206/API smoke are recorded in [`deployment.md`](deployment.md).
 - Render/Neon/Vercel are future/alternative deployment paths for the retained
   FastAPI/PostgreSQL/Next.js code and are intentionally not part of this route.
-- Package and separately accept the lightweight JBrowse shell/configuration.
+- The lightweight JBrowse 4.3.0 shell is extracted once under `site/jbrowse/` and deployed with
+  Worker Static Assets; the large reference/track objects remain in the fixed HF revision.
 - Define and review the `endpoint_gene_context` algorithm; it remains zero.
 
 The audit script's injected transport and focused tests are for offline code

@@ -567,10 +567,10 @@ pinned-origin evidence。
 
 - 当前 Cloudflare Worker 仍为免费 developer preview，尚未配置自定义域名，也不应视为正式
   v0.3.0 release；workers.dev 发布曾提示需要注册 subdomain，但当前 URL 已可访问并通过
-  线上 smoke；
+  线上 smoke。单份 JBrowse 4.3.0 shell 已提取到 `site/jbrowse/`，当前线上浏览器 smoke
+  已通过；
 - FastAPI/PostgreSQL/Next.js alternative path 没有真实 PostgreSQL/container import smoke
   （本机没有 Docker/PostgreSQL）；
-- 需要单独打包和验收轻量 JBrowse shell；
 - `endpoint_gene_context` 尚未定义或计算。
 
 因此 v0.3 仍是 developer preview，不应写成已上线。

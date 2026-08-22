@@ -71,8 +71,9 @@ Cloudflare D1 `bted-catalogue-v03-preview` 已完成真实批次导入（1 relea
 20 assemblies、49 contigs、22 sources、32 accessions、22 tracks、211 assets、28,399
 endpoints；164 public assets、19 augmentation sources），远程库约 32.78 MB。Worker 已部署
 到 [`bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`](https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev)，
-线上 HTTP/HEAD/Range/JBrowse/static-page smoke 已通过。它仍是 preview，不是正式 v0.3.0
-release；轻量 JBrowse shell 仍需单独打包，`endpoint_gene_context` 尚未定义或计算。旧的 mutable
+线上 HTTP/HEAD/Range/JBrowse/static-page smoke 已通过；Worker 同时部署了从既有 v0.2 bundle
+提取的单份 JBrowse 4.3.0 shell（455 个运行时文件，约 5.84 MiB，不含大型科学资产）。它仍是
+preview，不是正式 v0.3.0 release；`endpoint_gene_context` 尚未定义或计算。旧的 mutable
 `resolve/main` verified bundle 不作为最终交付；本地 pinned verified bundle 是临时交接物，
 不进入 Git。
 

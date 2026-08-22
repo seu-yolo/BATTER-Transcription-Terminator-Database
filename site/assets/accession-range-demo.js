@@ -184,7 +184,7 @@
 
     const jbrowseButton = root.querySelector("[data-edge-jbrowse]");
     if (payload.jbrowse_config_url) {
-      jbrowseButton.href = `jbrowse/index.html?config=${encodeURIComponent(payload.jbrowse_config_url)}`;
+      jbrowseButton.href = `/jbrowse/index.html?config=${encodeURIComponent(payload.jbrowse_config_url)}`;
       jbrowseButton.classList.remove("disabled");
       jbrowseButton.removeAttribute("aria-disabled");
     } else {

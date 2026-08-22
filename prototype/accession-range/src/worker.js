@@ -419,10 +419,21 @@ async function jbrowseConfig(request, env, release, accession, sourceId) {
     });
   }
   configTracks.push(...tracksConfig);
+  const sessionTracks = configTracks.map((track, index) => ({
+    id: `bted_track_${index + 1}`,
+    type: "FeatureTrack",
+    configuration: track.trackId,
+    minimized: false,
+    displays: [{
+      id: `bted_display_${index + 1}`,
+      type: "LinearBasicDisplay",
+      configuration: `${track.trackId}-LinearBasicDisplay`,
+    }],
+  }));
   return json({
     assemblies: [{ name: assemblyName, displayName: `${assembly.display_name || assembly.organism_name} (${accession})`, sequence: { type: "ReferenceSequenceTrack", trackId: `${assemblyName}_refseq`, adapter: { type: "IndexedFastaAdapter", fastaLocation: { uri: assetUrl(request, fasta.asset_key), locationType: "UriLocation" }, faiLocation: { uri: assetUrl(request, fai.asset_key), locationType: "UriLocation" } } } }],
     tracks: configTracks,
-    defaultSession: { name: `${accession} BTED catalogue`, views: [{ type: "LinearGenomeView", displayedRegions: [{ refName: contigName, start: regionStart, end: regionEnd, reversed: false, assemblyName }], tracks: configTracks.map((track) => ({ type: "FeatureTrack", configuration: track.trackId, minimized: false })) }] },
+    defaultSession: { name: `${accession} BTED catalogue`, views: [{ id: "bted_linear_genome_view", type: "LinearGenomeView", offsetPx: 0, bpPerPx: 10.001, displayedRegions: [{ refName: contigName, start: regionStart, end: regionEnd, reversed: false, assemblyName }], tracks: sessionTracks }] },
     metadata: { release_version: release.release_version, assembly_accession: accession, source_ids: publicTracks.map(({ source }) => source.source_id), browser_asset_origin: release.asset_origin_status },
   });
 }

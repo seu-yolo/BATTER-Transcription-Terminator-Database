@@ -161,6 +161,8 @@ endpoints、95,437 个 genes 和 211 个 materialized assets（164 个 public ob
 `data/registry/remote_asset_audit.v0.2.0-hf.json` 保存（164/164 HEAD 200 + Range 206，
 164 对象共 126,280,212 bytes）。该证据对应 canonical `release_version=v0.2.0`，不代表
 已发布 `v0.3.0` 数据。D1 local/remote import 与 Worker HTTP smoke 已完成；线上 preview URL
-为 `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`。轻量 JBrowse shell 仍是独立后续工作，`endpoint_gene_context`
+为 `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`；单份 4.3.0
+JBrowse shell 已从既有 v0.2 bundle 提取到 `site/jbrowse/`（约 5.84 MiB，不含科学资产），
+source/assembly/record 页面均使用 Worker config URL。`endpoint_gene_context`
 尚未定义或计算。使用 `resolve/main` 生成的旧 verified bundle 已被固定 revision 结果取代，
 不作为最终交付。

@@ -40,12 +40,28 @@ source accessions、22 tracks、211 assets（164 public）和 28,399 endpoints�
 assembly/endpoint detail、动态 JBrowse config、公开 FASTA/BED HEAD 200 和单 Range 206、
 同源 `remote-data` alias；未知/private asset 返回 404，任意 `?url=` 返回 400。首页、
 `sources.html`、`catalog.html`、`accession-range-demo.html` 跟随 clean-path 重定向后均为
-非空 200，页面未发现旧 localhost/API 入口。当前 URL 仍是 developer preview，不是正式
+非空 200，页面未发现旧 localhost/127.0.0.1 入口；JBrowse config 请求均指向同一 Worker
+origin。当前 URL 仍是 developer preview，不是正式
 v0.3.0 release；workers.dev 发布提示过 subdomain 注册，但当前 URL 已可访问。
 
 所有本地 `.wrangler` cache 和生成 SQL 都是临时物，不进入 Git；HF 固定 revision 与 164/164
 audit 证据保持不变。FastAPI/PostgreSQL/Next.js 保留为 future/alternative，未创建或依赖
 Neon/Render/Vercel 资源。
+
+### 2026-08-23 JBrowse shell 缺口修复与线上浏览器验收
+
+- 线上首次检查确认 `/jbrowse/index.html` 在 Worker 尚未提供 shell（404）。从既有
+  v0.2.0 JBrowse 4.3.0 bundle 只提取一份 app shell 到 `site/jbrowse/`：455 个运行时文件、
+  6,128,344 bytes（5.844 MiB），最大单文件 728,605 bytes；排除 FASTA/FAI/GFF3/BED/BigWig、
+  21 份 source viewer、配置和 source maps。Worker Static Assets 总体积实测 6,568,327 bytes。
+- `scripts/build_v0_2_site.py` 改为生成 Worker API config URL；source/assembly/record/
+  catalogue 页面统一链接到同源 `/jbrowse/index.html?config=<absolute Worker API URL>`，
+  accession 页面运行时按钮使用同源 `/jbrowse/index.html`。站点 validator 增加对当前同源
+  `/api/assemblies` 配置链接的合法支持，但继续拒绝 localhost/127.0.0.1。
+- 动态 config 补齐 JBrowse 4.3 default-session 的 view/track/display IDs。重新部署后，真实
+  Playwright 共享 `GCF_000739105.1` 显示 gene annotation + `BATTER_S1_007`/`BATTER_S1_013`
+  两条 source track；单 source `GCF_003054575.1` 显示 `BATTER_S1_009`。两个页面 console
+  均 0 error / 0 warning；所有 config asset URI HEAD 200、单 Range 206。
 
 ## 2026-08-21 —— BTED v0.3 第一里程碑：架构契约与数据库骨架
 

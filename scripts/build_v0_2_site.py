@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import html
 import json
+import os
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -18,9 +19,12 @@ RELEASE_PATH = REPO_ROOT / "data/public/v0.2.0/release_manifest.json"
 REGISTRY_PATH = REPO_ROOT / "data/registry/batter_s1_source_registry.tsv"
 RECORD_ROOT = REPO_ROOT / "data/public/v0.2.0/records"
 REPOSITORY_URL = "https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database"
-JBROWSE_CONFIG_VERSION = "20260814-strand-ui-v4"
 SITE_ASSET_VERSION = "20260817-core-fields-v2"
 ACCESSION_RANGE_PILOT = "GCF_000739105.1"
+BTED_PREVIEW_ORIGIN = os.environ.get(
+    "BTED_PREVIEW_ORIGIN",
+    "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev",
+).rstrip("/")
 
 EVIDENCE_LABELS = {
     "author_called_endpoint": "Author-called experimental endpoint",
@@ -161,13 +165,20 @@ def status_badge(status: str) -> str:
     return f'<span class="badge badge-published">{bi("Data available", "数据可用")}</span>'
 
 
+def jbrowse_config_url(assembly: str, source_id: str | None = None) -> str:
+    path = f"{BTED_PREVIEW_ORIGIN}/api/assemblies/{quote(assembly, safe='')}/jbrowse-config"
+    if source_id:
+        path += f"?source_id={quote(source_id, safe='')}"
+    return path
+
+
 def assembly_browser_config(assembly: str, records: list[dict[str, object]]) -> str | None:
     published = [record for record in records if record["has_jbrowse"]]
     if not published:
         return None
     if len(published) > 1:
-        return f"assemblies/{assembly}.config.json"
-    return f"{published[0]['source_id']}.config.json"
+        return jbrowse_config_url(assembly)
+    return jbrowse_config_url(assembly, str(published[0]["source_id"]))
 
 
 def assembly_download_url(assembly: str, filename: str, prefix: str = "") -> str:
@@ -178,9 +189,8 @@ def record_download_url(source_id: str, filename: str, prefix: str = "") -> str:
     return f"{prefix}downloads/records/{source_id}/{filename}"
 
 
-def jbrowse_href(config: str, prefix: str = "") -> str:
-    versioned_config = f"{config}?v={JBROWSE_CONFIG_VERSION}"
-    return f"{prefix}jbrowse/index.html?config={quote(versioned_config, safe='')}"
+def jbrowse_href(config_url: str, prefix: str = "") -> str:
+    return f"{prefix}jbrowse/index.html?config={quote(config_url, safe='')}"
 
 
 def browser_reading_guide(assays: list[str]) -> str:
@@ -200,8 +210,9 @@ def record_page(record: dict[str, object], assembly_track_count: int) -> str:
     source = record["source"]
     manifest = record["manifest"]
     status = str(record["release_status"])
+    assembly = str(record["assembly"])
     browser = (
-        f'<a class="button primary" href="{jbrowse_href(f"{source_id}.config.json", "../")}">{bi("Open source track", "打开来源 track")}</a>'
+        f'<a class="button primary" href="{jbrowse_href(jbrowse_config_url(assembly, source_id), "../")}">{bi("Open source track", "打开来源 track")}</a>'
         if record["has_jbrowse"] else f'<span class="button disabled">{bi("No endpoint track", "无端点 track")}</span>'
     )
     bed = (
@@ -210,7 +221,6 @@ def record_page(record: dict[str, object], assembly_track_count: int) -> str:
     )
     metadata = f'<a class="download-card" href="{assembly_download_url(str(record["assembly"]), "metadata.json", "../")}"><strong>{bi("Assembly metadata", "组装元数据")}</strong><code>metadata.json</code></a>'
     evidence = str(record["evidence_class"])
-    assembly = str(record["assembly"])
     raw_accessions = accession_links(source["raw_data_accessions"], str(manifest.get("raw_data_url", "")))
     browser_guide = browser_reading_guide([str(source["assay_family"])]) if record["has_jbrowse"] else ""
     content = f"""

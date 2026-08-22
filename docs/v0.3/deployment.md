@@ -114,7 +114,29 @@ source/assembly/endpoint detail、JBrowse config 均 `200`；固定 HF FASTA/BED
 `200`，单字节 Range 为 `206` 且返回 1 byte；`remote-data` alias 为 `200`；unknown/private
 asset 为 `404`；任意 `?url=` 为 `400`。Worker Static Assets 的 `.html` 入口会返回
 Cloudflare clean-URL `307`，浏览器跟随后 `/sources`、`/catalog`、`/accession-range-demo`
-等科研页面均 `200` 且内容非空；页面没有 localhost/旧 API 引用。
+等科研页面均 `200` 且内容非空；页面没有 localhost/旧 local API 引用。
+
+### JBrowse shell 与真实浏览器 smoke
+
+`site/jbrowse/` 只从既有 v0.2 JBrowse release bundle 提取一份 4.3.0 app shell：
+`index.html`、manifest/favicon、运行时 JavaScript/CSS/fonts 共 455 个文件、6,128,344
+bytes（5.844 MiB），最大单文件 728,605 bytes。没有复制 v0.2 bundle 的 FASTA、FAI、GFF3、
+BED、BigWig、配置或 source maps；这些对象继续由登记的 HF asset 代理提供。静态 site 总体积
+实测为 6,568,327 bytes，满足本 preview 的 Worker Static Assets 体积边界。
+
+`scripts/build_v0_2_site.py` 现在为 source、assembly、record 和 catalogue 的 JBrowse
+按钮生成部署域名内的
+`/jbrowse/index.html?config=<encoded https://.../api/assemblies/{accession}/jbrowse-config[?source_id=...]>`；
+`BTED_PREVIEW_ORIGIN` 可在重新生成 site 时覆盖默认 preview origin。accession 页面运行时
+按钮同样指向同源 `/jbrowse/index.html`，并使用静态 payload 中的 Worker config URL。Worker
+Static Assets 对显式 `index.html` 返回 clean-path `307`，浏览器跟随至 `/jbrowse/` 后 shell
+为非空 `200`（577 bytes），config query 会保留。
+
+真实 Playwright smoke：共享 assembly `GCF_000739105.1` 打开 `CP009124.1`，显示
+`Reference gene annotation`、`BATTER_S1_007` 和 `BATTER_S1_013` 两条 source track，console
+为 0 error / 0 warning；单 source assembly `GCF_003054575.1` 显示 gene annotation 和
+`BATTER_S1_009` track，console 同样为 0 error / 0 warning。两份 config 发出的所有 FASTA/
+FAI/GFF3/TBI/BED asset URL 均实测 HEAD `200`、单 Range `206`。
 
 部署命令使用：
 

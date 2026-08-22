@@ -61,10 +61,10 @@ ABSOLUTE_PATH_PATTERNS = [
     (re.compile(r"[A-Za-z]:\\\\[^\s\"'<)]+"), "Windows 本地路径"),
 ]
 
-# localhost / 127.0.0.1 / 内部 API endpoint 不应出现在正式 site/
+# localhost / 127.0.0.1 / old local API endpoint 不应出现在正式 site/；当前
+# Cloudflare preview site intentionally uses its same-origin catalogue API for JBrowse config.
 LOCALHOST_API_PATTERNS = [
     (re.compile(r"127\.0\.0\.1|localhost", re.IGNORECASE), "localhost / 127.0.0.1 引用"),
-    (re.compile(r"/api/assemblies", re.IGNORECASE), "内部 API 路径 /api/assemblies"),
 ]
 
 # 凭据 / 密钥 / 口令占位
