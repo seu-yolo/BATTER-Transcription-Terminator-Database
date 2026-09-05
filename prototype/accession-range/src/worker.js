@@ -374,6 +374,9 @@ async function endpointDetail(env, release, endId) {
 async function jbrowseConfig(request, env, release, accession, sourceId) {
   const assembly = await env.BTED_DB.prepare("SELECT * FROM assemblies WHERE release_version = ? AND accession = ?").bind(release.release_version, accession).first();
   if (!assembly) return json({ error: "assembly_not_found", accession }, 404);
+  const threeLayerPilot = new URL(request.url).searchParams.get("pilot") === "three-layer"
+    && accession === "GCF_000009045.1"
+    && (!sourceId || sourceId === "BATTER_S1_003");
   const [assemblyAssets, tracks] = await Promise.all([
     allAssets(env, release.release_version, accession, null),
     trackRows(env, release.release_version, accession, sourceId),
@@ -396,11 +399,11 @@ async function jbrowseConfig(request, env, release, accession, sourceId) {
   const tbi = assemblyAssets.find((asset) => asset.asset_kind === "tbi" && Number(asset.is_public) === 1);
   const contig = await env.BTED_DB.prepare("SELECT contig_accession, length_bp FROM contigs WHERE release_version = ? AND assembly_accession = ? ORDER BY contig_accession LIMIT 1").bind(release.release_version, accession).first();
   const firstEndpoint = await env.BTED_DB.prepare("SELECT reference_name, biological_coordinate_1based FROM endpoints WHERE release_version = ? AND reference_assembly = ? AND source_id = ? ORDER BY biological_coordinate_1based, end_id LIMIT 1").bind(release.release_version, accession, publicTracks[0].source.source_id).first();
-  const contigName = firstEndpoint?.reference_name || contig?.contig_accession;
+  const contigName = threeLayerPilot ? "NC_000964.3" : (firstEndpoint?.reference_name || contig?.contig_accession);
   const center = Number(firstEndpoint?.biological_coordinate_1based || 1);
   const length = Number(contig?.length_bp || center + 1000);
-  const regionStart = Math.max(0, center - 501);
-  const regionEnd = Math.min(length, center + 500);
+  const regionStart = threeLayerPilot ? 17999 : Math.max(0, center - 501);
+  const regionEnd = threeLayerPilot ? 28000 : Math.min(length, center + 500);
   const tracksConfig = [];
   for (const { track, source, bed, sourceAssets } of publicTracks) {
     const rawAccessions = JSON.parse(track.raw_accessions_json || "[]");
@@ -457,6 +460,35 @@ async function jbrowseConfig(request, env, release, accession, sourceId) {
     });
   }
   configTracks.push(...tracksConfig);
+  // The BATTER-TPE pilot is a static, source-scoped model track. It is kept
+  // outside the endpoint catalogue so a prediction can never be mistaken for
+  // an experimental endpoint. The BED and provenance JSON are shipped with
+  // the site and are served from this same Worker origin.
+  if (threeLayerPilot) {
+    const pilotPath = "/data/pilots/BATTER_S1_003_batter_tpe_regional_pilot.bed";
+    const provenancePath = "/data/pilots/BATTER_S1_003_batter_tpe_regional_pilot.provenance.json";
+    const pilotTrackId = "bsub_batter_tpe_regional_pilot";
+    configTracks.push({
+      type: "FeatureTrack",
+      trackId: pilotTrackId,
+      name: "BATTER_S1_003 · BATTER-TPE prediction (compatibility pilot)",
+      adapter: { type: "BedAdapter", bedLocation: { uri: new URL(pilotPath, request.url).href, locationType: "UriLocation" } },
+      category: ["BTED model predictions", "BATTER_S1_003"],
+      assemblyNames: [assemblyName],
+      metadata: {
+        source_id: "BATTER_S1_003",
+        evidence_class: "model_prediction",
+        experimental: false,
+        prediction_scope: "regional pilot; NC_000964.3:18000-28000",
+        model: "BATTER-TPE pretrained model · compatibility pilot",
+        repository: "https://github.com/xu-research-lab/BATTER",
+        commit: "9133d2d36b60c238a1e36760a296eff9f001fb72",
+        provenance: new URL(provenancePath, request.url).href,
+        warning: "Computational prediction; not an experimental endpoint and not an exact single-base call.",
+      },
+      displays: [{ type: "LinearBasicDisplay", displayId: `${pilotTrackId}_display`, showLabels: false, height: 42 }],
+    });
+  }
   const sessionTracks = configTracks.map((track, index) => ({
     id: `bted_track_${index + 1}`,
     type: track.type,
@@ -472,7 +504,7 @@ async function jbrowseConfig(request, env, release, accession, sourceId) {
     assemblies: [{ name: assemblyName, displayName: `${assembly.display_name || assembly.organism_name} (${accession})`, sequence: { type: "ReferenceSequenceTrack", trackId: `${assemblyName}_refseq`, adapter: { type: "IndexedFastaAdapter", fastaLocation: { uri: assetUrl(request, fasta.asset_key), locationType: "UriLocation" }, faiLocation: { uri: assetUrl(request, fai.asset_key), locationType: "UriLocation" } } } }],
     tracks: configTracks,
     defaultSession: { name: `${accession} BTED catalogue`, views: [{ id: "bted_linear_genome_view", type: "LinearGenomeView", offsetPx: 0, bpPerPx: 10.001, displayedRegions: [{ refName: contigName, start: regionStart, end: regionEnd, reversed: false, assemblyName }], tracks: sessionTracks }] },
-    metadata: { release_version: release.release_version, assembly_accession: accession, source_ids: publicTracks.map(({ source }) => source.source_id), browser_asset_origin: release.asset_origin_status },
+    metadata: { release_version: release.release_version, assembly_accession: accession, source_ids: publicTracks.map(({ source }) => source.source_id), browser_asset_origin: release.asset_origin_status, three_layer_pilot: threeLayerPilot },
   });
 }
 

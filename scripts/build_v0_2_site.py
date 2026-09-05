@@ -231,6 +231,12 @@ def record_page(record: dict[str, object], assembly_track_count: int) -> str:
     evidence = str(record["evidence_class"])
     raw_accessions = accession_links(source["raw_data_accessions"], str(manifest.get("raw_data_url", "")))
     browser_guide = browser_reading_guide([str(source["assay_family"])]) if record["has_jbrowse"] else ""
+    evidence_preview = (
+        '<section class="panel evidence-preview-link"><div><p class="eyebrow">Evidence dashboard</p>'
+        '<h2>See the evidence together</h2><p>Compare this source\'s measured signal, curated endpoint records and a separate BATTER-TPE compatibility pilot.</p></div>'
+        '<a class="button" href="../evidence-layers-preview.html">Open evidence dashboard</a></section>'
+        if source_id == "BATTER_S1_003" and record["has_jbrowse"] else ""
+    )
     content = f"""
 <main class="page-shell record-shell">
   <nav class="breadcrumbs"><a href="../sources.html">{bi('Genomes', '基因组')}</a><span>/</span><a href="../assemblies/{esc(assembly)}.html">{esc(assembly)}</a><span>/</span><span>{source_id}</span></nav>
@@ -240,7 +246,7 @@ def record_page(record: dict[str, object], assembly_track_count: int) -> str:
     <section class="panel"><div class="panel-header"><h2>{bi('Source overview', '来源概况')}</h2>{browser}</div><dl class="data-list">
       <dt>{bi('Dataset', '数据集')}</dt><dd>{esc(manifest.get('dataset_id', 'NA'))}</dd><dt>{bi('Publication year', '发表年份')}</dt><dd>{esc(source['published_year'])}</dd>
       <dt>{bi('Evidence', '证据说明')}</dt><dd><code>{esc(evidence)}</code> · {esc(EVIDENCE_LABELS.get(evidence, evidence))}</dd><dt>{bi('Tracks on this assembly', '该组装上的 track')}</dt><dd>{assembly_track_count}</dd>
-    </dl></section>{browser_guide}
+    </dl></section>{browser_guide}{evidence_preview}
     <section class="panel"><h2>{bi('Raw data accessions', '原始数据')}</h2><p class="section-note">Open the public repository record for each accession number.</p>{raw_accessions}</section>
     <section class="panel"><h2>{bi('Download', '下载')}</h2><p class="section-note">{bi('The page exposes the analysis-ready BED and one metadata document. Detailed provenance remains in the repository.', '页面只突出分析所需的 BED 和一份元数据；完整追溯信息仍保留在仓库中。')}</p><div class="download-grid compact-downloads">{bed}{metadata}</div></section>
     <section class="panel"><h2>{bi('Data note', '数据说明')}</h2><p>{esc(manifest.get('known_limitations', source['blocker_or_note']))}</p><div class="evidence-note">{bi('A 3′ end record is not automatically a functionally proven terminator. Tracks from the same assembly remain separate evidence sources.', '3′ end 记录不自动等同于功能性终止子；同一组装上的不同 track 仍是独立证据来源。')}</div></section>
@@ -279,6 +285,12 @@ def assembly_page(assembly: str, records: list[dict[str, object]]) -> str:
     browser_guide = browser_reading_guide(
         [str(record["source"]["assay_family"]) for record in records if record["has_jbrowse"]]
     )
+    evidence_preview = (
+        '<section class="panel evidence-preview-link"><div><p class="eyebrow">Evidence dashboard</p>'
+        '<h2>See the evidence together</h2><p>Compare the S1_003 measured signal, curated endpoint records and a separate BATTER-TPE compatibility pilot.</p></div>'
+        '<a class="button" href="../evidence-layers-preview.html">Open evidence dashboard</a></section>'
+        if assembly == "GCF_000009045.1" else ""
+    )
     pilot_note = (
         """
   <section class="panel edge-prototype-callout"><div><p class="eyebrow">Quick genome search</p><h2>Two experimental studies are available for this assembly</h2><p>Search the assembly accession to see both studies, open their independent tracks, and download analysis-ready coordinates.</p></div><a href="../accession-range-demo.html?accession=GCF_000739105.1">Search this genome →</a></section>"""
@@ -289,7 +301,7 @@ def assembly_page(assembly: str, records: list[dict[str, object]]) -> str:
   <nav class="breadcrumbs"><a href="../sources.html">{bi('Genomes', '基因组')}</a><span>/</span><span>{esc(assembly)}</span></nav>
   <div class="record-heading"><div><p class="eyebrow">{bi('Reference assembly', '参考组装')}</p><h1>{esc(assembly)}</h1><p class="record-title"><em>{esc(' / '.join(organisms))}</em></p><p><a href="{assembly_accession_url(assembly)}" target="_blank" rel="noopener">View assembly in NCBI Datasets</a></p></div>{status_badge('published' if published else 'audit_only')}</div>
   <section class="metric-grid"><div class="metric"><span>{bi('Source tracks', '来源 track')}</span><strong>{len(records)}</strong></div><div class="metric"><span>{bi('Endpoint records', '端点记录')}</span><strong>{total:,}</strong></div><div class="metric"><span>{bi('Years', '年份')}</span><strong>{years[0] if len(years) == 1 else f'{years[0]}–{years[-1]}'}</strong></div><div class="metric"><span>{bi('Browser view', '浏览器视图')}</span><strong>{bi('Combined tracks' if len(records) > 1 else 'Single track', '多 track' if len(records) > 1 else '单 track')}</strong></div></section>
-  <section class="panel assembly-summary"><div><h2>{bi('Datasets on this genome', '该基因组上的数据集')}</h2><p>{bi('Sources with the exact same assembly accession are shown together. They remain independent tracks and are not collapsed into a consensus.', '参考组装 accession 完全相同的来源在此集中展示；各来源仍保留为独立 track，不合并成共识结果。')}</p></div>{browser_actions}</section>{pilot_note}{browser_guide}
+  <section class="panel assembly-summary"><div><h2>{bi('Datasets on this genome', '该基因组上的数据集')}</h2><p>{bi('Sources with the exact same assembly accession are shown together. They remain independent tracks and are not collapsed into a consensus.', '参考组装 accession 完全相同的来源在此集中展示；各来源仍保留为独立 track，不合并成共识结果。')}</p></div>{browser_actions}</section>{pilot_note}{browser_guide}{evidence_preview}
   <section class="panel"><div class="table-wrap"><table class="source-table"><thead><tr><th>Track / Source</th><th>{bi('Year / paper', '年份 / 文献')}</th><th>Raw data accessions</th><th>{bi('Assay', '方法')}</th><th>{bi('Evidence', '证据')}</th><th>{bi('Records', '记录数')}</th></tr></thead><tbody>{''.join(track_rows)}</tbody></table></div></section>
   <section class="panel"><h2>{bi('Download this genome', '下载该基因组数据')}</h2><div class="download-grid compact-downloads">{bed}<a class="download-card" href="{assembly_download_url(assembly, 'metadata.json', '../')}"><strong>{bi('Metadata', '元数据')}</strong><code>metadata.json</code></a></div></section>
 </main>"""
