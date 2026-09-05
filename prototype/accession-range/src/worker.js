@@ -33,6 +33,10 @@ function decodePath(value) {
   }
 }
 
+function isLoopbackHost(hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
 function pageParams(url) {
   const page = Number(url.searchParams.get("page") || "1");
   const pageSize = Number(url.searchParams.get("page_size") || "50");
@@ -478,16 +482,56 @@ async function proxyAsset(request, env, release, assetKey) {
   if (!asset) return json({ error: "unknown_or_private_asset", asset_key: assetKey }, 404);
   const range = request.headers.get("range");
   if (range && Number(asset.supports_range) !== 1) return json({ error: "range_not_supported" }, 416, { "content-range": `bytes */${asset.byte_size}` });
-  const base = String(env.HF_RESOLVE_BASE || "").replace(/\/$/, "");
-  if (!base) return json({ error: "origin_not_configured" }, 500);
-  const origin = new URL(`${base}/${asset.logical_path.split("/").map(encodeURIComponent).join("/")}`);
-  if (origin.protocol !== "https:" || origin.hostname !== String(env.ALLOWED_ORIGIN_HOST || "")) return json({ error: "origin_not_allowed" }, 403);
+  const requestUrl = new URL(request.url);
+  const logicalPath = asset.logical_path.split("/").map(encodeURIComponent).join("/");
+  const localBase = String(env.LOCAL_ASSET_BASE || "").trim();
+  let origin;
+  if (isLoopbackHost(requestUrl.hostname) && localBase) {
+    let localUrl;
+    try {
+      localUrl = new URL(localBase);
+    } catch {
+      return json({ error: "local_origin_not_allowed" }, 403);
+    }
+    if (
+      localUrl.protocol !== "http:"
+      || !isLoopbackHost(localUrl.hostname)
+      || localUrl.username
+      || localUrl.password
+      || localUrl.search
+      || localUrl.hash
+    ) {
+      return json({ error: "local_origin_not_allowed" }, 403);
+    }
+    const prefix = localUrl.pathname.replace(/\/$/, "");
+    origin = new URL(`${localUrl.origin}${prefix}/${logicalPath}`);
+  } else {
+    const base = String(env.HF_RESOLVE_BASE || "").replace(/\/$/, "");
+    if (!base) return json({ error: "origin_not_configured" }, 500);
+    origin = new URL(`${base}/${logicalPath}`);
+    if (origin.protocol !== "https:" || origin.hostname !== String(env.ALLOWED_ORIGIN_HOST || "")) {
+      return json({ error: "origin_not_allowed" }, 403);
+    }
+  }
   const headersIn = new Headers();
   for (const header of ["range", "if-range", "if-none-match", "if-modified-since"]) {
     const value = request.headers.get(header);
     if (value) headersIn.set(header, value);
   }
-  const upstream = await fetch(origin, { method: request.method, headers: headersIn, redirect: "follow" });
+  let upstream;
+  try {
+    upstream = await fetch(origin, { method: request.method, headers: headersIn, redirect: "follow" });
+  } catch {
+    // Keep an unavailable upstream from surfacing as an opaque Worker 500. In
+    // local Wrangler this commonly means the sandbox cannot reach HF; the
+    // registered asset and its provenance remain valid, but the proxy cannot
+    // deliver bytes until the origin is reachable again.
+    return json(
+      { error: "asset_origin_unavailable", asset_key: asset.asset_key },
+      502,
+      { "cache-control": "no-store" },
+    );
+  }
   const headers = new Headers();
   for (const header of RESPONSE_HEADERS) {
     const value = upstream.headers.get(header);
