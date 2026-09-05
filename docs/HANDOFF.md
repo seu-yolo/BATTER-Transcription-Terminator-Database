@@ -1,608 +1,149 @@
-# BTED 当前交接
+# BTED 当前维护交接
 
-**更新：** 2026-08-23
+**更新日期：** 2026-09-06
 
-**当前分支：** `feature/bted-v0.3-dynamic-service`
+**用途：** 同事从零接手代码、数据边界、预览站和后续开发
 
-## 2026-08-23 JBrowse wrapper 信息栏（已部署验收）
+**当前工作树：** `/Users/seu_yolo/Desktop/BGIRNA/.worktrees/bted-v0.3-dynamic-service`
 
-当前工作树新增一个不修改 JBrowse 核心 bundle 的用户入口：`site/browser.html`。它从
-`site/data/assemblies.json` 读取 assembly/source 元数据，把 organism、assembly、source
-selector、Publication/PubMed/DOI、raw accession、Download BED 和 Dataset details 放在
-JBrowse iframe 上方。`site/assets/browser-wrapper.js` 只把真正的 JBrowse 参数交给
-`site/jbrowse/index.html`，并透传 `loc`、`session`、`tracks`、`highlight` 和 `assembly`。
+**交接分支：** `handoff/bted-maintainer-2026-09`，基于 `131b70f`
 
-wrapper 对 BTED `/api/assemblies/<accession>/jbrowse-config` 只使用当前页面 origin 重建
-config，避免 preview hostname 在同源 Worker 部署中造成跨域；外部 config 保持原地址。共享
-assembly 的 All source tracks 视图还直接列出每个来源的 PubMed、DOI 和 Dataset details，
-不要求用户先选 source。
+本文件只描述当前有效状态。完整开发历史保存在 `docs/WORKLOG.md` 和 Git；具体操作、科学边界、
+权限与演示分别见：
 
-生成器 `scripts/build_v0_2_site.py` 已将 source、assembly、record 和 accession-search 的
-公开浏览器入口改为 `browser.html?config=...`；JBrowse 原始页面仍可直接用作内部 iframe
-入口。共享 `GCF_000739105.1` 的 S1_007/S1_013 仍为两个独立 source track，S1_002 没有
-浏览器入口。每个可发布 source 的静态 track metadata 已补 DOI/DOI URL、raw accession、
-record URL 和动态 Worker BED asset URL；Worker 动态 track metadata 增加 `BED_download`。
+- [维护与运行手册](handoff/OPERATIONS_RUNBOOK.md)
+- [科学边界与未完成工作](handoff/SCIENCE_AND_OPEN_WORK.md)
+- [权限交接清单](handoff/ACCESS_CHECKLIST.md)
+- [同事演示与接手验收](handoff/DEMO_AND_ACCEPTANCE.md)
 
-实现提交 `91820e1` 已推送并部署到现有 Cloudflare developer preview；Worker version ID 为
-`679cff52-8779-4bdd-9346-63d180278b53`。全量 unittest 为 132 PASS、3 个可选 FastAPI runtime
-skip，站点 validator、三个 JavaScript `node --check` 与 `git diff --check` 均通过。真实线上
-Playwright 已验证共享 assembly wrapper、两篇论文链接、ENA、source selector、单来源
-JBrowse、BED HEAD 200 以及 console 0 error / 0 warning。`loc/session` 参数透传有 focused test；
-如果未来改回 GitHub Pages 独立静态域名，需要另行提供 API CORS，本轮生产路径仍是 Worker
-Static Assets 与 API 同源。
+## 1. 项目与当前数据
 
-**当前里程碑：** v0.3.0 Cloudflare developer preview 已增加从固定 HF verified bundle 生成
-D1 batches 的脚本、完整 catalogue D1 schema、Cloudflare Worker API、Worker Static Assets、
-登记 asset 的同源 GET/HEAD/Range 代理和动态 JBrowse config；现有 FastAPI/PostgreSQL/Next.js
-保留为 future/alternative。当前计数为 22 个来源（21 `published_standardized` + 1
-`audit_only`）、20 个 release assembly records、19 个去重 published browser assemblies、
-28,399 个 endpoints、95,437 个 genes 和 211 个 materialized assets（208 个 public
-objects；3 个 S1_002 audit-only objects 保持 private）。本地 Wrangler 4.125 D1 实际导入为 1 release、13 publications、20 assemblies、
-49 contigs、22 sources、32 accessions、22 tracks、211 assets 和 28,399 endpoints；local
-SQLite state（含 WAL）约 68 MB。远程 preview D1 `bted-catalogue-v03-preview` 实际导入同一
-计数，数据库大小为 32.78 MB。Worker 已部署到
-`https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`；线上 API、静态
-页面、JBrowse、HEAD/Range 和拒绝规则 smoke 均已通过。Hugging Face public object handoff
-已在固定 revision `463cfc8bd582a5ed9d2c426822148c3f1e56c4d0` 完成 208/208 HEAD 200 + Range 206 审计；当前仍是免费 preview，不宣称
-正式 v0.3.0 release。
+BTED（Bacterial Transcript 3′ End Database）将公开细菌转录 3′ 端实验整理成可追溯、可下载、
+可在 JBrowse 中核对的标准资源。
 
-**最新 handoff 参考：** `96577c8`、`7dbd580`。
+| 项目 | 当前值 |
+|---|---:|
+| canonical release | `v0.2.0` |
+| 原始研究论文 | 13 |
+| source records | 22 |
+| `published_standardized` / `audit_only` | 21 / 1（S1_002） |
+| assembly records / 去重可浏览 assembly | 20 / 19 |
+| contigs / source accessions / tracks | 49 / 32 / 22 |
+| endpoints | 28,399 |
+| `author_called_endpoint` / `curated_record` | 24,887 / 3,512 |
+| GFF-derived genes | 95,437（已物化，当前 D1 catalogue 不查询） |
+| registered assets / public HF objects | 211 / 208 |
 
-**当前验证：** Python 全量测试 127/127 PASS；Worker `node --check`、本地/远程 D1 真实导入、
-HTTP/Range/JBrowse smoke 和 `git diff --check` 已通过；frontend `pnpm run check-contract`、
-`pnpm run build` 和站点 validator 也已通过。真实固定 revision 证据保存在
-`data/registry/remote_asset_audit.v0.2.0-hf.json`，SHA-256 为
-`8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`。
+`v0.3` 是服务架构的 developer preview 名称，不是新的 `v0.3.0` biological data release。
 
-## 2026-08-22–23 v0.3 Cloudflare catalogue preview
+## 2. 当前运行架构
 
-- 当前部署配置是 `prototype/accession-range/wrangler.jsonc`：Worker + D1 binding
-  `BTED_DB` + `site/` Static Assets；HF origin 固定到 revision
-  `463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`。Render/Neon/Vercel 路线已停止，FastAPI/
-  PostgreSQL/Next.js 代码仅保留为 future/alternative。
-- `scripts/generate_bted_d1.py` 从 verified bundle 生成外部临时 SQL 批次，不提交大 seed。
-  D1 只保存用户当前查询所需的 release/publication/assembly/contig/source/accession/
-  asset/track/endpoint；source annotations 保持 HF/metadata assets，genes 暂不入库。
-- 本地 D1 真实导入最终行数：1 release、13 publication、20 assembly、49 contig、22 source、
-  32 accession、22 track、211 asset（208 public）和 28,399 endpoint；SQLite 主库约 31 MB，
-  含 WAL 的 local state 约 68 MB。首次批次显式事务被 Wrangler 拒绝，已移除生成器的
-  `BEGIN/COMMIT`，重跑后全量导入成功。
-- 有界 Worker HTTP smoke 已验证 health/stats/catalogue/source/assembly/endpoint/augmentation/
-  JBrowse；固定 HF FASTA/BED HEAD 为 200、单 Range 为 206、同源 `remote-data` alias 可用，
-  任意 `?url=` 为 400，private assembly（无 public FASTA+FAI）为 404。Detail 路由最初漏包
-  `Response`、assembly browser flag 未包含 source BED，均已修复。
-- `CI=1 npx wrangler whoami` 已在非交互模式确认认证成功；远程 D1
-  `bted-catalogue-v03-preview` 已按 schema 和顺序批量导入，远程计数为 1 release、13
-  publications、20 assemblies、49 contigs、22 sources、32 accessions、22 tracks、211
-  assets（208 public）和 28,399 endpoints，远程 D1 大小约 32.78 MB。
-- Worker + Static Assets 已部署到
-  `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`。线上验证覆盖
-  `/api/health`、stats、catalogue、sources、assemblies、endpoints、augmentation、source/
-  assembly/endpoint detail、动态 JBrowse config、公开 FASTA/BED 的 HEAD 200 和单 Range
-  206、`remote-data` alias；未知/private asset 返回 404，任意 `?url=` 返回 400。首页、
-  `sources.html`、`catalog.html`、`accession-range-demo.html`（跟随 clean-path 重定向后）
-  均返回非空 200，页面未发现旧 localhost/API 入口。
-- 2026-08-23 对 Lalanne 四来源执行资产级许可修正：NCBI reference、GEO/Mendeley signal
-  与 BTED 标准输出恢复公开，作者特异补充字段继续不复制。`BATTER_S1_001/003/004/005`
-  的动态 JBrowse 均恢复；配置新增原始正负链 BigWig、独立 BED endpoint track，以及 PubMed、
-  DOI、GEO 和 BTED record metadata 链接。线上 E. coli 实测 FASTA/BED/BigWig HEAD 200、
-  Range 206，真实 JBrowse 页面加载 gene、两条 raw signal 和 endpoint track。
-
-## 2026-08-21 v0.3 第三阶段 A：参考 contig registry
-
-- `scripts/build_reference_contig_registry.py` 从只读的既有
-  `BTED-v0.2.0-jbrowse` bundle 解析 21 个 published source 的 config、
-  `IndexedFastaAdapter`、FAI 和根 `SHA256SUMS.txt`；不下载新参考序列，不修改 v0.2
-  release，也不使用端点最大坐标推测长度。
-- `data/registry/reference_contigs.v0.2.0.tsv`（47 行）与 `.json` provenance 已生成。
-  每行保留 assembly/contig、FAI `length_bp`、最大 endpoint 位置、支持 source、FASTA/FAI
-  basename 和摘要、bundle 清单摘要、生成器版本/UTC 时间。共享 contig 只有在长度和摘要
-  一致时才接受；S1_007/S1_013 共享 CP009124.1，但 source endpoint 仍独立。
-- canonical importer 默认读取该 TSV，也可用 `--contig-registry` 指定副本；它要求与
-  endpoint `(reference_assembly, reference_name)` 集合精确相同、长度覆盖所有 endpoint、
-  source/provenance/checksum 字段有效；长度边界为
-  `length_bp >= max_endpoint_position_1based`，允许 endpoint 正好在 contig 末位。真实 v0.2.0 现为
-  `canonical_validation_status=validated`、`postgresql_ready=true`、unresolved 为空。
-  缺少 registry 时保持 canonical validated 但 ready=false；这两个状态仍不能解释为已经
-  写入 PostgreSQL。
-- 参考 FASTA/FAI 不进入 Git，也不加入当前 127 项 canonical assets；registry 只是既有
-  JBrowse 发布资产的查询层 provenance。专项 importer/builder 测试为 24/24 PASS。
-
-## 2026-08-21 v0.3 架构与数据库骨架
-
-- 阅读并以 v0.2 SOP、证据边界、发布接口、release manifest、registry 和 S1_007/S1_002
-  记录为输入；v0.2 canonical release 保持不变。
-- `docs/v0.3/architecture.md` 冻结 canonical release→PostgreSQL 派生查询层关系、
-  v0.2/v0.3 并行策略和 Vercel/Render/Neon/Hugging Face/同源 Range 代理边界。
-- `docs/v0.3/browser-ui-contract.md` 冻结已批准的搜索/augmentation 入口、论文与
-  accession 可点击详情、基因/端点多级缩放、raw plus/minus BigWig 和 GFF3/TBI 展示规则。
-- `docs/v0.3/database-schema.md` 与 `backend/database/schema.sql` 覆盖
-  `release_versions`、`import_runs`、`publications`、`assemblies`、`contigs`、
-  `sources`、`source_accessions`、`samples`、`endpoints`、`source_annotations`、
-  `genes`、`endpoint_gene_context`、`assets`；endpoint 保留 v0.2 全 24 列和 provenance。
-- source-level 边界保持：22 个 source 中 21 个 published、S1_002 audit-only；Table S1
-  `used_for_batter_augmentation` 为 19 TRUE/3 FALSE。预测/不可拆分混合证据不进入公开
-  endpoint，gene clusters/Rfam 不纳入。
-- `docs/v0.3/api-contract.md` 定义 `/api/v1/stats`、sources、assemblies、endpoints、
-  genes、四类详情路由、augmentation、downloads/endpoints 和 assets Range 206/416 行为；
-  page_size 上限为 100，S1_002 不生成下载/JBrowse 入口。
-- `backend/database/README.md` 规定 staging、校验、atomic switch；禁止对生产数据库
-  直接 DROP/TRUNCATE 或覆盖既有 release。
-- `tests/test_bted_v03_schema.py`：11/11 PASS；与 `tests/test_bted_ingestion.py` 合计
-  15/15 PASS；完整 `unittest discover` 为 32/32 PASS；`git diff --check` PASS。
-
-## 2026-08-21 v0.3 canonical release 校验器
-
-- `backend/importer/canonical.py` 是无 PostgreSQL 依赖的只读校验器；先解析并验证 release
-  entry 声明的 `records/<source>/manifest.json` 作为 canonical source manifest，
-  `data/registry/manifests` 只作 audit 交叉核对；随后检查 24 列 endpoints、BED 坐标、
-  证据、PMID/DOI、annotation 外键、必要文件、逐项 `SHA256SUMS.txt` 与 S1_002 audit-only
-  边界。
-- `scripts/import_bted_v03.py validate --release-root data/public/v0.2.0` 输出 JSON；
-  `--plan-json` 保存确定性行数/键摘要。它不执行 INSERT，`write_mode` 固定为
-  `not_written`；plan 另有 `canonical_validation_status` 和
-  `postgresql_ready` 两个状态，避免把校验通过误认为可以直接写库。
-- 第二里程碑当时的真实 v0.2.0 预检结果：22 source / 21 published / 1 audit-only / 28,399 endpoint；
-  19/3 augmentation；13 publication、20 assembly、47 contig、21 sample、32 accession、
-  17 个 source annotation 文件（24,887 行），并生成 127 个已验证小型 canonical assets。
-  计划另含 1 个 `import_runs`、零行 `genes`/`endpoint_gene_context`；当时 47 个 contig
-  长度仍标为 unresolved，未用端点最大坐标猜测（第三阶段 A 已补齐 registry）。
-- `tests/test_bted_v03_importer.py`：第三阶段后 24/24 PASS；schema/ingestion 合计
-  15/15 PASS，完整 `unittest discover` 为 56/56 PASS；plan 的 127 个 asset 使用不含
-  `/` 的稳定 asset_id、schema asset_kind 和 `is_public`；accession 使用
-  `accession_namespace`/accession/raw_value。
-
-### 接手后的下一步
-
-1. 在目标 PostgreSQL 版本执行 DDL smoke test，补充 importer 的 staging/atomic switch
-   和 release checksum 校验；不要先连接生产或改写 v0.2 文件。
-2. 根据 API 契约实现 FastAPI 只读查询和同源 asset Range 代理，先用本地 fixture 验证
-   404/422、provenance、JBrowse deep link 与单 Range 206/416。
-3. 只有契约和 importer 评审通过后，才安排 Render/Neon/Vercel/Hugging Face 部署；
-   gene context、外部协作者数据、NCBI 新数据和训练集仍需单独任务。
-
-## 2026-08-17 核心字段页面
-
-- 页面先显示 *Streptomyces lividans* TK24、精确 assembly/contig、来源数据集和端点总数。
-- 每个来源只显示此前已经整理的论文、实验方法、原始 accession、证据类型和记录数；研究单位、详细培养/采样和测序机构不进入当前页面。
-- S1_007/013 继续保持两条独立 source track；相同 `PRJEB31507` 会分别出现在两张来源卡中，不将端点静默合并。
-- 22 个来源的核心字段来自现有 manifest、release registry 和 processing record；S1_002 继续保持 `audit_only`。
-- 本地入口：`http://127.0.0.1:8017/accession-range-demo.html?accession=GCF_000739105.1&lang=zh`。
-
-## 2026-08-16 用户化双语检索页
-
-- 页面入口仍为 `http://127.0.0.1:8016/accession-range-demo.html`，但可见内容已从开发架构说明改为“检索—研究概览—浏览/下载”的科研用户流程。
-- 顶部 EN/中文按钮即时切换导航、表单、动态状态、统计、研究表、证据标签、下载区与页脚；选择写入 URL 和 localStorage。
-- 用户页不显示 D1、API route、对象存储路径或 Range 检查。技术实现仍保留在 `prototype/accession-range/`，自动测试仍直接验证 API 和 Range。
-- 页面解释收录范围、单条记录含义和证据边界，并列出适合用途与不可直接推断的结论。
-- S1_007/013 分别展示论文标题、2019/2020、实验方法、证据类别、记录数、PubMed、PRJEB31507、来源详情和来源特异解读，继续保持独立 track。
-
-## 2026-08-15 accession/Range 架构试点
-
-- 入口：`http://127.0.0.1:8016/accession-range-demo.html`；必须用 `scripts/run_accession_range_demo.py`，普通静态服务器不提供 `/api`。
-- 试点 assembly：`GCF_000739105.1 / CP009124.1`；S1_007（1,640）和 S1_013（1,208）仍是两条独立 `author_called_endpoint` track。
-- 参考 FASTA/FAI/GFF3/TBI 在两个旧来源资产中 SHA-256 完全一致；原型只解析一组共享对象，避免重复 8,628,614 bytes。
-- D1 schema、seed、Worker 和说明位于 `prototype/accession-range/`；本地等价API位于 `scripts/run_accession_range_demo.py`。
-- 生产 Worker 不接受任意远程 URL，只允许 D1 中登记的 asset key，并校验 origin host。
-- 本分支只验证部署架构，没有上传外部服务、创建Cloudflare资源或改变公开科学数据。
-
-## 2026-08-14 Genomes 科研目录改版
-
-- 主表只保留 `Genome / Experimental data / Evidence / 3′ ends / Access`，不再让内部 Source ID、track 数和重复状态占据主视图。
-- 物种/菌株是第一视觉层级；assembly accession 位于其下并链接 NCBI Datasets。
-- 可按物种、实验方法和证据类别筛选，搜索仍覆盖 assembly、source ID 与原始数据 accession。
-- `Select visible` 按当前筛选结果选择 assembly；批量 ZIP 为每个 assembly 保留独立目录，并包含 BED 与合并 metadata。
-- 多篇研究使用同一精确 assembly 时，在同一个 genome 详情/JBrowse 中保留独立来源轨道，不把研究结果静默合并。
-- 完整本地演示地址：`http://127.0.0.1:8015/sources.html`（需在仓库根目录运行 `.pages-preview` 的本地服务器）。
-
-## 2026-08-14 JBrowse 可读性补强
-
-- 四个 Rend-seq 默认窗口均自动选择同时含 `+`/`-` 候选的约 3 kb 区域，打开即可验证箭头方向。
-- 轨道标题直接写明蓝色/正链/向右与橙色/负链/向左；来源页和 assembly 页另有一张英文读图卡。
-- 合并候选轨道使用浏览器专用富属性 GFF3；点击端点可查看稳定 ID、1-based 坐标、strand、raw support、上下文和证据警告。公开标准 BED 不变。
-- signed-log BigWig 使用 `bedGraphToBigWig -unc`，规避 JBrowse 2.17 对本机生成的压缩 BigWig 的 range 索引错误；这是 display-only 资产，原始 BigWig 未变。
-- S1_003 实际浏览器检查 0 alert；完整校验与 15 项回归通过。
-
-## 2026-08-13 JBrowse 正负链紧凑视图
-
-- S1_001/003/004/005 默认仅打开基因、正负链配对信号、正负链合并候选端点三条轨道。
-- 默认配对信号使用 display-only `sign(strand) × log10(1 + raw signal)`：正链在零线上方，负链在零线下方；原始 BigWig 不变，并保留在 `Full evidence view`。
-- 合并端点 BED 保留原 BED6 坐标和 strand；候选仍是 `called_endpoint`，不改述为终止子。
-- 构建时发现旧 E. coli viewer BED 被 B. subtilis 同名文件覆盖；现改从各来源 canonical `processed/` 目录复制，并增加 contig/strand 硬检查。核心公开表未受影响。
-- JBrowse、Pages、15 项回归和实际浏览器检查全部通过；控制台无 warning/error。
-
-## 2026-08-13 英文与 accession 更新
-
-- 全站当前只输出英文，不显示尚未审校的中文副本或语言按钮；生成标签保留 `data-i18n-key` 供后续语言切换。
-- 22 个来源详情页均有 **Raw data accessions** 区域；多个 accession 分别链接到 GEO、SRA、BioProject、ENA 或 BioStudies。
-- 参考 assembly accession 可点击跳转 NCBI Datasets；assembly 页面也展示各来源的原始数据入口。
-- genome 搜索支持 accession number。
-- 完整 Pages 预览、站点校验、14 项回归测试和浏览器检查均通过。
-
-## 2026-08-12 网站改版
-
-- 20 个精确 assembly 作为主目录，22 个来源作为独立 track 和追溯记录；
-- `GCF_000739105.1` 与 `GCF_005519465.1` 各有一套自动打开的双来源 JBrowse 视图；
-- 下载页可全选/多选，输出按 assembly 分目录的 ZIP；
-- 主要公开文件收敛为 BED + metadata，后台 24 列表、字段字典、manifest 与 checksum 不删除；
-- 组会教程：[`demo/BTED_组会展示教程_2026-08-12.md`](demo/BTED_组会展示教程_2026-08-12.md)。
-- feature 分支 Pages build 已成功，部署环境按策略拒绝非 `main` 分支；合并后 `push: main` 会触发正式部署。
-
-## 已交付
-
-- 22 个来源均有 manifest 和详情页；21 个来源公开标准数据，S1_002 为 `audit_only`。
-- 21 个来源共 28,399 条 24 列核心记录；17 个许可允许的来源另有来源特异表。
-- 每个公开来源有 BED6、字段清单、manifest 和 checksum。
-- 21 套独立 JBrowse 配置；S1_005 的 CP009977.1/CP009978.1 位于同一 assembly。
-- 双语静态网站包含首页、筛选目录、下载页、方法页、关于页和 22 个来源页。
-- 数据/JBrowse Release 资产、CI、Pages workflow 和本地 Pages staging 已具备。
-- S1_005、S1_020、S1_022 的工程审计和处理记录已补齐。
-- 外部链接审计已保存为 `data/audit/v0.2.0/external_link_audit.tsv`，无失败或缺失必填入口。
-- PR #3 的根目录清理已同步：旧报告和登录号快照归档，重复的 `docs/legacy/original-directories/`、read-starts 与 `__MACOSX` 已退出当前 Git 树；历史未改写。
-
-## 接手前阅读
-
-1. [`docs/releases/v0.2.0.md`](releases/v0.2.0.md)
-2. [`docs/standards/BTED_数据入库标准流程_v0.2.md`](standards/BTED_数据入库标准流程_v0.2.md)
-3. [`docs/standards/BTED_数据发布接口_v0.2.md`](standards/BTED_数据发布接口_v0.2.md)
-4. [`data/public/v0.2.0/release_manifest.json`](../data/public/v0.2.0/release_manifest.json)
-5. [`data/registry/batter_s1_publication_status.v0.2.0.tsv`](../data/registry/batter_s1_publication_status.v0.2.0.tsv)
-
-## 重新构建
-
-```bash
-python3 scripts/build_v0_2_release.py --input-root /path/to/BGIRNA
-python3 scripts/audit_v0_2_priority_sources.py
-python3 scripts/build_release_archives.py
-python3 scripts/build_jbrowse_release.py --input-root /path/to/BGIRNA
-python3 scripts/build_v0_2_site.py
-python3 scripts/stage_pages.py --jbrowse-dir dist/BTED-v0.2.0-jbrowse --output-dir .pages-preview
+```text
+canonical v0.2 files + registries
+          ↓
+verified materialized bundle
+          ↓
+Cloudflare D1 query projection
+          ↓
+Worker API + Worker Static Assets + dynamic JBrowse config
+          ↓
+allowlisted same-origin asset proxy
+          ↓
+pinned Hugging Face objects
 ```
 
-## 完整验证
+- Worker：`bted-catalogue-v03-preview`
+- 线上地址：`https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`
+- D1：`bted-catalogue-v03-preview`，binding `BTED_DB`
+- HF dataset：`seu-yolo/BTED-v0.3-assets`
+- 固定 revision：`463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`
+- 远端审计：208/208 objects，196,667,360 bytes；证据文件 SHA-256
+  `8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`
 
-```bash
-python3 scripts/validate_bted_templates.py
-python3 scripts/validate_bted_release.py
-python3 scripts/validate_repo_layout.py
-python3 scripts/validate_bted_v0_2.py
-python3 scripts/audit_v0_2_priority_sources.py
-python3 scripts/validate_jbrowse_release.py dist/BTED-v0.2.0-jbrowse
-python3 scripts/validate-site.py site
-python3 scripts/validate-site.py .pages-preview
-python3 -m unittest -v tests/test_bted_ingestion.py tests/test_bted_v0_2.py
-git diff --check
-```
+当前系统没有使用 MySQL。D1 是 SQLite-compatible 查询投影；仓库中的 FastAPI/PostgreSQL/Next.js
+是 future/alternative path，未作为线上服务运行。
 
-## 待完成
+## 3. 已部署基线与本地交接分支
 
-1. 审阅已同步 PR #3 结构清理的 Draft PR #4，保持串联 PR 的改动范围清晰。
-2. 按 #1 → #2 → #3 → #4 顺序处理 PR 基线，避免直接把全部历史一次展开到 `main`。
-3. 评审通过后发布 `v0.2.0` Release，再合并包含 Pages workflow 的分支。
-4. 在 Settings → Pages 选择 GitHub Actions，运行部署并检查稳定链接。
-5. S1_002 只有在未来能可靠拆出纯实验端点时才改变 `audit_only`。
+| 能力 | 已部署基线 | 交接分支 | 是否上线 |
+|---|---|---|---|
+| catalogue/source/assembly/endpoint/augmentation API | 有 | 保留 | 是 |
+| 动态 JBrowse config 与同源 HF Range proxy | 有 | 保留 | 是 |
+| JBrowse 顶部论文、accession、BED 与详情入口 | 有 | 保留 | 是 |
+| S1_003 自然名称证据仪表盘 | 无 | 有 | 否 |
+| S1_003 BATTER-TPE regional compatibility pilot | 无 | 11 条，7 + / 4 − | 否 |
+| loopback `LOCAL_ASSET_BASE` fallback | 无 | 有 | 否 |
+| origin 网络异常结构化 `502 asset_origin_unavailable` | 无 | 有 | 否 |
 
-## 远端发布状态
+最后一次完整线上验收记录为 2026-08-23，JBrowse wrapper 对应 Worker version
+`679cff52-8779-4bdd-9346-63d180278b53`。2026-09-06 本机访问 Cloudflare 和 Hugging Face
+均在 HTTPS 建连时超时；这表示本轮无法复核，不足以判断远端服务是否宕机。接手后应从独立网络并结合
+Cloudflare deployments 状态复核。
 
-- 实现提交：`142e371 feat: build BTED v0.2 public demo`。
-- 分支：`agent/bted-v0.2-public-demo`，已通过 SSH 推送。
-- Draft PR：`https://github.com/LIMwhatnameisavailable/BATTER-Transcription-Terminator-Database/pull/4`，CI 已通过。
-- PR #3 结构清理提交：`61318db refactor: clean repository root and legacy assets`。
-- `v0.2.0` Release 草稿包含四个发布资产；保持草稿，直至评审和 Pages 发布顺序确认。
-- Pages workflow 仅允许手动触发；正式发布 Release 且管理员启用 Pages 后再运行，避免合并时产生预期失败。
-- HTTPS OAuth 令牌仍缺少 `workflow` scope；继续推送本分支可使用已验证的 SSH 地址，无需重新构建数据。
+## 4. S1_003 证据试点
 
-## 不要做
+- 对象：*Bacillus subtilis* 168，`BATTER_S1_003`
+- assembly / contig：`GCF_000009045.1` / `NC_000964.3`
+- 区域：18,000–28,000
+- measured signal：Rend-seq 正/负链 raw BigWig
+- curated endpoints：Lalanne Table S3，1,414 条
+- training augmentation：有 BATTER 序列级训练数据背景，但当前 assembly 映射未完成，无坐标 track
+- model output：BATTER-TPE regional compatibility pilot，11 条区间；`experimental=false`
 
-- 不把协作者外部文献合入本分支；
-- 不把混合证据或纯预测放进公开端点表/JBrowse；
-- 不把作者预测注释解释为新的实验结果；
-- 不把原始测序、出版商工作簿、大型 JBrowse 文件或凭据提交到 Git；
-- 不在未确认参考、坐标、contig、strand 或许可时猜测补齐。
+页面是 `site/evidence-layers-preview.html`；dynamic config 参数为
+`source_id=BATTER_S1_003&pilot=three-layer`。D 的 BED 和 provenance 位于
+`site/data/pilots/`，不得并入 canonical endpoint 表。
 
-## v0.3 第三阶段 B1 接手说明（2026-08-21）
+## 5. 证据底线
 
-当前 `feature/bted-v0.3-dynamic-service` 已增加确定性 PostgreSQL 行物化中间层，但仍未
-提交或推送。实现入口为 `backend/importer/materialize.py`，CLI 为：
+- `observed_signal`、`called_endpoint`、`author_called_endpoint`、`curated_record`
+  和 `model_prediction` 必须分开。
+- prediction-only 或混合证据不得发布为 experimental endpoint。
+- 生物学坐标是 1-based；单碱基 BED 是 0-based half-open。
+- 不跨 contig 匹配；无法核实 evidence/reference/coordinate/strand 时标
+  `blocked`/`to_review`，不得猜测。
+- 3′ end record 不自动等于功能验证的转录终止子；模型 score 也不是现实世界验证概率。
 
-```bash
-python3 scripts/import_bted_v03.py materialize \
-  --release-root data/public/v0.2.0 \
-  --output-dir /tmp/bted-v03-staging \
-  --asset-origin-base https://example.test/assets \
-  --generated-at-utc 2026-08-21T00:00:00Z
-```
+## 6. Git、worktree 与远端
 
-真实 v0.2.0 输出的表计数为 1/1/13/20/47/22/32/21/28,399/81,477/0/0/127，顺序对应
-release_versions/import_runs/publications/assemblies/contigs/sources/source_accessions/
-samples/endpoints/source_annotations/genes/endpoint_gene_context/assets。`BATTER_S1_002`
-只生成审计关联行，不生成 endpoint、source annotation 或 JBrowse 资产入口。JSONL 的
-`*_ref` 是给未来 writer 解析 PostgreSQL identity 的自然键辅助列，不是 schema 新物理列；
-origin URL 仅是 `planned_not_verified` 计划值。
+- `origin`：`LIMwhatnameisavailable/BATTER-Transcription-Terminator-Database`
+- `personal`：`seu-yolo/BATTER-Transcription-Terminator-Database`
+- 当前交接分支推送目标：`personal/handoff/bted-maintainer-2026-09`
 
-已完成测试：`tests/test_bted_v03_importer.py` 32/32 PASS；包括真实行数、24 列保留、自然
-键闭包、附表字段覆盖、预测分层、asset_kind 枚举、非法 origin、非空目录保护、固定时间
-重复 checksum、provenance 体积回归和失败校验不生成输出。另有全量
-`unittest discover` 64/64、`tests/test_bted_ingestion.py` 4/4、真实 validate 与
-`git diff --check` 通过。不要把 `/tmp` bundle 或参考 FASTA/FAI 放入 Git；本任务不实现
-writer、psycopg、API 或部署。
+2026-09-06 的 worktree 快照：
 
-### B1 provenance 体积修正
+| worktree | branch | 状态/用途 |
+|---|---|---|
+| `BATTER-Transcription-Terminator-Database` | `refactor/project-structure-and-literature-notes-v0.1` | clean；相对 origin behind 1 |
+| `.worktrees/assembly-track-download-demo` | `docs/bted-v0.2-handoff-v2` | clean；历史 v0.2 交接，远端分支保留 |
+| `.worktrees/bted-v0.2` | `agent/bted-v0.2-public-demo` | clean；历史 demo |
+| `.worktrees/bted-v0.3-dynamic-service` | 本交接分支 | 当前维护线 |
+| `.worktrees/pr3-cleanup` | `agent/pr3-layout-cleanup` | clean；历史 cleanup |
 
-主审反馈后，行级 annotation provenance 已改为紧凑形式：不再在 81,477 行中重复完整
-`field_roles`/`field_definitions`，只保留定位、未映射列、endpoint evidence 和必要边界；
-作者端点角色映射只记录 `original_evidence_roles`。完整字段字典及
-`fields.json`/`source_annotations.tsv` 的 checksum/行数按 source 各写一条到物化 manifest
-的 `annotation_field_provenance`，所有路径均相对 release，不含本机绝对路径。真实 bundle
-当前约为 77 MiB（附表 JSONL）/115 MiB（总目录），新增 100/150 MiB 体积回归测试；原始
-字段联合覆盖和 81,477 行计数不变。旧测试中曾允许的 schema 外 `source_annotation`
-asset_kind 已删除。由于 origin 仍是 `planned_not_verified`，所有物化 asset 行的
-`supports_range` 均为 `false`；未来通过 HTTP 206 审计后再由资产注册阶段改为 `true`。
+不要自动合并或删除这些历史分支/worktree；先根据 Git 历史判断是否已被当前维护线吸收。
 
-## v0.3 第三阶段 B2 接手说明（2026-08-22）
+## 7. 接手顺序
 
-B2 新增 `backend/importer/postgres.py` 和 `tests/test_bted_v03_postgres.py`，并在
-`scripts/import_bted_v03.py` 增加三个命令：
+1. clone `personal` 仓库并切换 `handoff/bted-maintainer-2026-09`。
+2. 阅读 `AGENTS.md`、本文件、四份 handoff 文档、数据入库 SOP。
+3. 运行 focused/full tests、Worker syntax、site validator 和 `git diff --check`。
+4. 使用自己的 GitHub/Cloudflare/HF 账号完成只读权限核验。
+5. 从独立网络检查线上 API、JBrowse 和代表性资产 HEAD/Range。
+6. 按 `DEMO_AND_ACCEPTANCE.md` 复现本地页面；不要依赖原维护者的 `/private/tmp`。
+7. 将第一项工作限定为一个 source 或一个共享基础设施变更，继续更新 WORKLOG。
 
-```bash
-python3 scripts/import_bted_v03.py verify-bundle --bundle-dir /tmp/bted-v03-staging
-python3 scripts/import_bted_v03.py load-postgres --bundle-dir /tmp/bted-v03-staging --confirm-write
-python3 scripts/import_bted_v03.py promote-postgres --bundle-dir /tmp/bted-v03-staging --confirm-promote
-```
+## 8. 优先未完成事项
 
-第一个命令只做本地 bundle 验证。后两个命令默认不会执行，必须显式确认并从
-`BTED_DATABASE_URL`（或 `--database-url-env` 指定的变量）取得 URL；没有 psycopg3、环境变量
-或确认参数时安全失败，不打印 URL。`requirements-v03.txt` 只声明
-`psycopg[binary]>=3.2,<4`，本轮不安装。
+1. 决定是否部署本分支的仪表盘、D pilot 和 local asset fallback；部署前必须重新验收。
+2. 重新下载并复核 BATTER training FASTA，先形成序列级 catalogue，再单独做 assembly mapping。
+3. 设计 signed-log 派生信号显示，同时保留 raw track 和原始数值。
+4. 定义并验证 `endpoint_gene_context`；当前不能宣称已完成。
+5. 以有实验来源的 assembly 和 GTDB representative genome 做扩展试点，不把预测混入实验数据。
+6. 决定 developer preview 是否升级为 production/custom domain。
 
-writer 的关键安全边界：
+## 9. 不属于本次交接提交的操作
 
-- 事务前流式验证 manifest、SHA256SUMS、每表 checksum/row count、允许/必填字段和自然键
-  闭包；拒绝 bundle 根目录额外文件、目录、符号链接及预期文件 symlink；JSON 拒绝 NaN/
-  Infinity。
-- `assets.origin_url` 必须 HTTPS 且 hostname 与 `origin_host` 一致；
-  `planned_not_verified` 时 `supports_range` 必须为 false，不把计划远端能力当作事实。
-- 事务顺序固定为 release/import → publication/assembly → contig → source → accession/
-  sample → endpoint → annotation → asset → global/per-source count audit；使用 SERIALIZABLE、
-  advisory lock、参数化 SQL、批量 endpoint/annotation，异常 rollback，无 DROP/TRUNCATE/
-  无条件 DELETE。
-- 已有 publication/assembly/contig 只有完整自然键字段兼容时复用；已有 release 整批拒绝。
-  非 published source 不能有 endpoint/sample，S1_002 必须零 endpoint/annotation/JBrowse。
-- `load-postgres` 的目标 release 保持 staged/validated 且 `is_current=false`。promotion
-  还需 bundle 与最新 committed import run 的 `asset_origin_status=verified`，并重复计数审计；
-  当前 v0.2 B1 bundle 是 `planned_not_verified`，不能 promotion。
-
-### B2 验证与下一步
-
-`tests/test_bted_v03_postgres.py` 当前 12/12 通过，涵盖真实 bundle 计数、批量边界、fake
-transaction commit/rollback、自然键兼容/冲突、重复 release、tamper/extra/symlink、origin/
-Range、严格 JSON 和 promotion 拒绝。另需运行：
-
-```bash
-python3 -m unittest discover -s tests -p 'test*.py' -q
-python3 -m unittest -v tests/test_bted_ingestion.py
-python3 scripts/import_bted_v03.py validate --release-root data/public/v0.2.0
-python3 scripts/import_bted_v03.py verify-bundle --bundle-dir /tmp/bted-b1-range-final
-git diff --check
-```
-
-以上离线测试不等同于真实数据库 smoke test。下一步应在隔离 PostgreSQL 实例执行
-`backend/database/schema.sql`，用测试凭据验证完整 load、重复 release 拒绝、已有自然键
-兼容/冲突、事务回滚、global/per-source count audit；在远程资产完成 HTTP 206 审计前不应
-标记 verified 或发布当前 release。不要提交 `/tmp` bundle、FASTA/FAI、数据库 URL 或凭据。
-
-## C1 只读 API 接手说明（2026-08-22）
-
-新增文件：
-
-- `backend/app/contracts.py`：无框架的 release/page/repository contracts；
-- `backend/app/errors.py`：统一 404/422 API error；
-- `backend/app/repository.py`：参数化 PostgreSQL read repository，每个操作独立清理连接；
-- `backend/app/service.py`：release、分页、排序、证据边界、下载和 audit-only 规则；
-- `backend/app/main.py`：可注入 fake repository 的 FastAPI `create_app()`；
-- `tests/test_bted_v03_api.py`：service/repository 离线测试和可选 HTTP contract tests。
-
-当前路由为 `/api/v1/health`、`stats`、`sources`、`assemblies`、`endpoints`、`genes`、
-`augmentation`、`downloads/endpoints`。列表/详情返回 release provenance；endpoint 保留
-24 列；TSV 是原值下载，BED6 的 score 是 `0` 格式占位，不能解释为 coverage。endpoint
-SQL 和 download source 校验只接受 `published_standardized`，S1_002 会 404，不生成空下载。
-endpoint 详情保留 24 列中的 PMID/DOI，并提供 source-annotation 行数/kind 摘要；完整
-publication 信息从 source detail 获取，没有摘要的 fake 结果会明确标记 `not_loaded_in_c1`。
-
-C2 新增 `/api/v1/assets/{asset_id}` 的登记资产 GET/HEAD/单 Range 同源代理：只查询
-published release 中 `is_public=true` 的资产，origin 必须是登记的 HTTPS URL 且 hostname 与
-`origin_host` 一致；无 Range 的 GET/HEAD 返回登记元数据，单 Range 返回 206，非法/多段/不
-支持 Range 返回 416 和 `Content-Range: bytes */size`。路由不接受任意 `url` 查询参数；
-published source 的 JBrowse config 现在通过同源 asset URL 作为 URL-encoded `config` 参数，
-S1_002 仍无入口。C2 本阶段不实现多 Range、缓存、重试、整文件运行时 hash、HF 上传或远端
-网络 smoke test；Next.js 页面、客户端 Explore 和动态 JBrowse config 已在 D1/D2 实现。
-FastAPI/uvicorn/httpx/psycopg3 由 `requirements-v03.txt` 声明，runtime 验证按隔离环境执行。
-
-验证命令：
-
-```bash
-python3 -m unittest -q tests/test_bted_v03_api.py
-python3 -m unittest discover -s tests -p 'test*.py' -q
-python3 -m unittest -q tests/test_bted_ingestion.py
-git diff --check
-```
-
-缺少 FastAPI 时 API runtime tests 会 skipped；这是预期，不得写成 HTTP smoke test 已通过。
-
-## C2 同源资产代理接手说明（2026-08-22）
-
-实现位于 `backend/app/assets.py`，由 `ReadService.asset()` 和
-`backend/app/main.py` 的 `GET|HEAD /api/v1/assets/{asset_id}` 路由调用。数据库查询由
-`PostgresReadRepository.get_public_asset()` 完成，只返回选定 published release 中公开的
-登记资产；请求本身不能提供 origin URL。`AssetProxyService` 支持注入 `httpx.Client` 或
-factory，默认运行时才创建 httpx client，便于离线 MockTransport 测试。
-
-当前默认环境专项合计 18 tests，其中 15 passed、3 skipped（缺少 FastAPI runtime 依赖）；
-主代理已在隔离 venv 安装 requirements 后验证 API/assets 18/18 PASS，全量
-`unittest discover` 95/95 PASS（仅有 Starlette TestClient deprecation warning）。这些仍是
-测试 transport/隔离环境结果，未执行真实 HTTP origin、真实 PostgreSQL 或远程 Range smoke
-test。下一步如要上线，应在隔离环境安装依赖，验证真实
-`assets` 登记的 HTTPS host、上游 Content-Range/长度和部署反向代理行为，再进行 Pages/API
-部署，不要把离线 MockTransport 结果写成远端可用性证明。
-
-## D1 前端接手说明（2026-08-22）
-
-新增独立目录 `frontend/`，不替换 v0.2 site。它是 English-only Next.js App Router 科研用户
-界面，消费 C1/C2 的 `/api/v1/*` 只读接口：首页提供动态统计与 accession/augmentation
-入口；source、assembly、endpoint 详情、客户端动态 `/explore` 筛选表、`/genes` gene query
-和 `/augmentation` 来源级信息。
-同一 assembly 的多个 source 保持独立，audit-only source 没有 endpoint 下载或 JBrowse 按钮。
-
-服务端 API origin 由 `BTED_API_ORIGIN` 提供，浏览器使用同源 `/api/v1`，rewrite 不含 localhost；
-配置和运行说明在 `frontend/README.md`。本轮执行依赖无关的
-`node frontend/scripts/check-contract.mjs`（PASS），并在已有 Node 依赖环境执行
-`pnpm run build`（PASS：编译、类型检查和静态页面生成均成功）；仍没有执行真实浏览器
-smoke test、API/数据库或部署 smoke test。后续若部署，才将 `BTED_API_ORIGIN` 指向目标
-C1/C2 API 并做浏览器验收；不要把 API 凭据写入仓库。
-
-## D2 动态 JBrowse 接手说明（2026-08-22）
-
-新增 `backend/app/browser.py` 和 `GET /api/v1/assemblies/{assembly_id}/jbrowse-config`。
-`PostgresReadRepository.get_jbrowse_bundle()` 读取同一 release 的 assembly 公共资产以及
-各 published source 的公共资产；builder 只引用 `/api/v1/assets/{asset_id}`。FASTA+FAI
-缺一不可；GFF3+TBI 存在时才添加 gene track；BED 按 source 独立为 endpoint track。
-
-track metadata 已带 publication URL、raw accession URL、evidence、record count 和
-provenance。BigWig 不存在时不生成 coverage；+/- 两个 BigWig 使用一个
-`MultiQuantitativeTrack`，保持 raw 正值、无 normalization/log transform，并用 metadata
-标明 strand。S1_002/audit-only 不进入配置。source JBrowse link 的 `source_id` 在 config
-endpoint query 内，再整体编码进 `config` 参数；assembly detail 有可用参考资产时返回动态
-JBrowse link，frontend 显示 `Open JBrowse`。
-
-验证：D2 browser/API/asset 专项在默认环境通过；主代理在隔离 venv 安装
-`requirements-v03.txt` 后完成 FastAPI runtime 验收，API/assets 与全量
-`unittest discover` 均为 98/98 PASS（仅有 Starlette deprecation warning），Next build 也通过。
-未进行真实 PostgreSQL/远端资产/JBrowse 浏览器 smoke test。当前 v0.2 B1 canonical 资产仍不含参考/信号
-浏览器对象，后续需单独登记这些资产后才会在真实 assembly 上生成可打开配置。
-
-## D3 浏览器资产物化接手说明（历史准备状态，2026-08-22）
-
-`scripts/build_v03_jbrowse_asset_inventory.py` 已从既有 v0.2 JBrowse bundle 与 canonical
-endpoint BED 生成 tracked TSV/JSON inventory。最初按 20 个 published assembly、109 行
-估算；registry/checksum 核验确认 21 个 published source 对应 19 个唯一 assembly：
-`BATTER_S1_007`/`BATTER_S1_013` 共享 `GCF_000739105.1`，
-`BATTER_S1_015`/`BATTER_S1_017` 共享 `GCF_005519465.1`。共享参考资产去重后，清单为
-76 个 reference asset、21 个 canonical BED 和 8 个 raw BigWig，共 105 行。
-
-`materialize` 现支持显式 `--jbrowse-asset-inventory
-data/registry/jbrowse_assets.v0.2.0.tsv`。不传参数仍是 127 个 canonical 小型资产；传入
-当前 105 行清单后，21 个 endpoint BED 替换同 logical path 的旧行，76 个参考资产按
-19 个 assembly 关联，8 个 raw BigWig 按 4 个 source 关联，最终 `assets.jsonl` 为 211 行。
-
-origin URL 使用 inventory 的 `object_path`，但状态仍是 `planned_not_verified`，所有 Range
-能力为 false。28 个 `external_link_only` 对象均已明确设为 `is_public=false`，S1_002 无
-浏览器资产。focused 4/4、ingestion 4/4 PASS；主代理使用含 FastAPI 依赖的
-`/private/tmp/bted-v03-api-venv` 完成全量 107/107 PASS、无 skip（仅有 Starlette
-`TestClient` deprecation warning）。211-asset bundle 已通过离线 `verify_bundle()`。
-该段记录资产尚未上传时的准备状态；后续固定 revision 的上传与远端 Range audit 已在
-“v0.3 Hugging Face public asset handoff complete”一节完成。数据库/JBrowse smoke test
-仍未执行。
-
-## 2026-08-22 v0.3 GFF-derived gene query layer
-
-本轮在不改写 canonical v0.2 endpoint/contig registry 的前提下，增加可选真实 gene
-物化。`materialize` 新增 `--jbrowse-bundle-root`；它只有和 tracked
-`--jbrowse-asset-inventory` 同时提供时才启用 GFF3/FAI 读取。19 个去重
-`reference_gff3`/`reference_fai` asset 通过 inventory 的 `bundle_path`、byte size 和
-SHA-256 校验后读取；gene ID 固定为
-`<assembly_accession>:<original GFF ID>`，attributes JSON 保留（页面显示用 URL-decoded
-值）`ID`/`Name`/`gene`/`locus_tag`/其它原始属性，gene_name 优先 `gene` 再 `Name`。
-
-真实 v0.2 bundle 的核验结果为 49 contigs、95,437 genes；GCF_000008685.2 的
-`NC_000957.1` 和 `NC_001904.1` 仅作为 GFF/FAI 派生 contig 补入，canonical registry
-仍为 47 行。5 条环状 replicon 的 GFF3 unrolled end 超过线性 FAI 长度，保留原始
-start/end，并在 attributes JSON 写入 `_bted_coordinate_note` 与
-`_bted_contig_length`；数据库 gene check 仍验证 start/end 顺序、strand、assembly/contig
-外键和 registered GFF3 asset/sha，不把这类坐标裁短。`endpoint_gene_context` 明确仍为
-0，未计算任何上下文关系。
-
-PostgreSQL preflight 接受非空 genes，使用 assembly+contig natural refs 校验后批量写入；
-assets 在 genes 前写入以满足 annotation asset FK。无 bundle 参数的默认物化仍为 47
-contigs/0 genes。新增 focused real-count（本地有 v0.2 bundle 时）与 fake
-preflight/load-order tests；CI 没有本地大 bundle 时 real-count test 会 skip，但生成器
-和默认路径仍会执行。
-
-## v0.3 公共资产远端交接准备（历史状态，2026-08-22）
-
-以下记录保留审计前的准备状态；它已由下面的固定 revision 完成交接记录取代。
-
-- tracked inventory：105 行、19 个唯一 assembly；其中 105 个 browser 对象为
-  `verified_redistributable`/`is_public=true`。带 inventory 的 planned materialized
-  bundle 有 211 个 asset 行，完整发布集合为 208 个
-  `verified_redistributable`/`is_public=true` 对象，另有 3 个 audit-only/private 行。
-  其中 87 个是 inventory 之外的 canonical metadata/checksum/annotation 等 API 小文件。
-- 当前真实 GFF/FAI 物化结果：95,437 genes，`endpoint_gene_context=0`。
-- `scripts/prepare_v03_public_asset_objects.py` 生成 `ASSET_OBJECTS.json` 和对象树；
-  `scripts/audit_v03_remote_assets.py` 只从显式 HTTPS origin 与登记 `object_path` 构造
-  URL，对每项执行 HEAD 与 `bytes=0-0` 单 Range，记录长度、206、Content-Range、1 字节和
-  `ok`，不上传、不重试、不缓存、不接受清单外 URL。
-- 维护者的实际操作顺序见 [`docs/v0.3/deploy-assets.md`](v0.3/deploy-assets.md)。
-  77/77 只代表 browser subset；全局 bundle/import verification 需要 materialized
-  assets 中全部 208 个 public+verified 对象通过，才能考虑
-  `asset_origin_status=verified`；不能手工把 `supports_range` 改成 true。
-- CI 现在显式运行 gene/object preparation/remote-audit 专项测试，并对这些脚本和
-  `backend/importer` 的 canonical/materialize/postgres Python 文件执行 `py_compile`。
-
-## v0.3 远端审核报告应用交接准备（历史状态，2026-08-22）
-
-`scripts/apply_v03_remote_asset_audit.py` 是 audit 与 PostgreSQL writer 之间的离线步骤。
-输入 planned materialized bundle、`REMOTE_ASSET_AUDIT.json` 和 tracked browser inventory，
-输出新的 checksum-complete bundle。required 集合来自 materialized asset table 当前全部
-208 个 public+verified 行（105 browser + 103 canonical small assets）；tracked inventory
-只核对 browser provenance。只有 208/208 的 asset ID、对象路径、大小、SHA-256、HEAD 200
-与 Range 206 均匹配时，manifest 才成为 `asset_origin_status=verified`；external/private
-asset 继续保持 Range=false。当前 prepare 脚本已从完整 materialized `assets.jsonl` 生成
-208-object manifest，105 个 browser 行仅作为 inventory provenance cross-check。此步骤不上传、不联网、
-不写数据库，也不代表 promotion 已执行。audit/apply focused 8/8 PASS，另有
-prepare focused 2/2 PASS。默认环境全量 `unittest discover` 当前为 123 tests
-（3 个可选 FastAPI runtime skipped）。
-
-Materializer `bted-materializer-0.3.0-b2` 已统一所有 asset origin 为
-`<asset_origin_base>/<logical_path>`。重新物化会改变 assets/manifest/bundle checksum，但
-默认 127 与 inventory 211 行数不变；`asset_id` 不再用于拼接对象存储 URL。
-
-## v0.3 Hugging Face public asset handoff complete（2026-08-22）
-
-- Public dataset：`https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets`。
-- Immutable revision：`463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`；pinned origin 为
-  `https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets/resolve/463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`。
-- Canonical `release_version` 保持 `v0.2.0`；本次不是新的 `v0.3.0` 数据 release。
-- 208 个 public objects、总计 196,667,360 bytes；3 个 audit-only/private objects 未上传。
-- 固定 revision 的真实远端 audit 为 208/208：每项 HEAD `200`、Range `206`、
-  `Content-Range` 与登记大小一致、返回一个字节。
-- 已将报告纳入 `data/registry/remote_asset_audit.v0.2.0-hf.json`；SHA-256：
-  `8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`。
-- pinned verified bundle manifest SHA-256：
-  `849876269dd1827014f1a75daacd2fdf418c642eb96fd39984d58641913f2264`。verified bundle
-  本身是本机临时交接物，路径不写入仓库，也不作为远端对象上传。
-- 旧 `resolve/main` bundle 已被 pinned revision supersede，不作为最终交付；未连接
-  PostgreSQL、未 promote、未修改 canonical release 或 Git 历史。
-
-## v0.3 developer preview 当前边界收口（2026-08-22）
-
-本分支当前已经具备 importer/materialized bundle/PostgreSQL writer/read API、Cloudflare D1
-generator/schema、Cloudflare Worker catalogue API、同源 asset proxy、动态 JBrowse config、
-Next.js pages、客户端动态 Explore 和 GFF-derived gene query。真实数据计数为 22 个来源
-（21 published + 1 audit-only）、20 个 release assembly records、19 个去重 published browser
-assemblies、28,399 个 endpoints、95,437 个 genes，以及 211 个 materialized assets，其中
-208 个 public objects 已在上述固定 HF revision 完成远端验证。Cloudflare local D1、远程
-preview D1 与线上 Worker smoke 已完成；报告位于
-`data/registry/remote_asset_audit.v0.2.0-hf.json`；local simulated audit 仍不替代该真实
-pinned-origin evidence。
-
-剩余事项仅包括：
-
-- 当前 Cloudflare Worker 仍为免费 developer preview，尚未配置自定义域名，也不应视为正式
-  v0.3.0 release；workers.dev 发布曾提示需要注册 subdomain，但当前 URL 已可访问并通过
-  线上 smoke。单份 JBrowse 4.3.0 shell 已提取到 `site/jbrowse/`，当前线上浏览器 smoke
-  已通过；
-- FastAPI/PostgreSQL/Next.js alternative path 没有真实 PostgreSQL/container import smoke
-  （本机没有 Docker/PostgreSQL）；
-- `endpoint_gene_context` 尚未定义或计算。
-
-因此 v0.3 仍是 developer preview，不应写成已上线。
+- 未部署 Worker，未写入远程 D1，未上传或重写 HF 对象；
+- 未修改 canonical `v0.2.0`、D1 schema、公开 API 或 endpoint 数；
+- 未添加 credential、数据库 dump、原始 FASTQ/BAM/WIG 或 BATTER 大文件；
+- 未邀请同事账号：执行邀请仍需要其 GitHub、Cloudflare 和 Hugging Face 身份标识。

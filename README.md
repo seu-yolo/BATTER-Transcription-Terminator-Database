@@ -28,8 +28,9 @@ v0.2.0 保留固定的 24 列核心端点表，并增加通过 `end_id` 关联�
 
 ## BTED v0.3 developer preview
 
-当前分支 `feature/bted-v0.3-dynamic-service` 提供已部署但仍为 preview 的 v0.3 Cloudflare
-developer preview。当前部署路径是 Cloudflare Worker + D1 + Worker Static Assets：它复用现有 `site/`
+已部署基线来自 `feature/bted-v0.3-dynamic-service`；当前维护交接入口是
+[`docs/HANDOFF.md`](docs/HANDOFF.md)。该基线仍是 v0.3 Cloudflare developer preview。
+当前部署路径是 Cloudflare Worker + D1 + Worker Static Assets：它复用现有 `site/`
 静态 UX，提供 catalogue/source/assembly/endpoint/augmentation API、动态 JBrowse config 和
 登记 HF asset 的同源 Range 代理。现有 FastAPI/PostgreSQL/Next.js 组件仍保留为
 future/alternative，以 canonical release 和登记资产为真源，不改写 v0.2 发布目录。
@@ -43,7 +44,7 @@ future/alternative，以 canonical release 和登记资产为真源，不改写 
 | 去重后的 published browser assemblies | 19 |
 | endpoint records | 28,399 |
 | GFF-derived genes | 95,437 |
-| materialized assets | 211（其中 164 个 public objects，已在固定 HF revision 通过 Range audit） |
+| materialized assets | 211（其中 208 个 public objects，已在固定 HF revision 通过 Range audit） |
 
 本地前端开发入口（alternative Next.js path）：
 
@@ -62,20 +63,21 @@ v0.3 仍不是生产上线。Hugging Face public object handoff 已完成，但�
 canonical `release_version=v0.2.0`，不是一个新的 `v0.3.0` 数据 release：
 [`seu-yolo/BTED-v0.3-assets`](https://huggingface.co/datasets/seu-yolo/BTED-v0.3-assets)
 的固定 revision 为
-`d12190e434057edaf2c2bdbf19132f1e41873c38`，164 个 public objects（126,280,212 bytes）
-均通过 HEAD 200 + 单字节 Range 206，47 个 private/external objects 未上传。可复核证据位于
+`463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`，208 个 public objects（196,667,360 bytes）
+均通过 HEAD 200 + 单字节 Range 206；3 个 S1_002 audit-only/private objects 未上传。可复核证据位于
 [`data/registry/remote_asset_audit.v0.2.0-hf.json`](data/registry/remote_asset_audit.v0.2.0-hf.json)，
-其 SHA-256 为 `3c4fed76dbd996164229605bc32eb52afed68c94a56bfb4233df2e6f492f46e0`。
+其 SHA-256 为 `8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`。
 
 Cloudflare D1 `bted-catalogue-v03-preview` 已完成真实批次导入（1 release、13 publications、
 20 assemblies、49 contigs、22 sources、32 accessions、22 tracks、211 assets、28,399
-endpoints；164 public assets、19 augmentation sources），远程库约 32.78 MB。Worker 已部署
+endpoints；208 public assets、19 augmentation sources），远程库约 32.78 MB。Worker 已部署
 到 [`bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`](https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev)，
-线上 HTTP/HEAD/Range/JBrowse/static-page smoke 已通过；Worker 同时部署了从既有 v0.2 bundle
+2026-08-23 记录的线上 HTTP/HEAD/Range/JBrowse/static-page smoke 已通过；Worker 同时部署了从既有 v0.2 bundle
 提取的单份 JBrowse 4.3.0 shell（455 个运行时文件，约 5.84 MiB，不含大型科学资产）。它仍是
 preview，不是正式 v0.3.0 release；`endpoint_gene_context` 尚未定义或计算。旧的 mutable
 `resolve/main` verified bundle 不作为最终交付；本地 pinned verified bundle 是临时交接物，
-不进入 Git。
+不进入 Git。2026-09-06 本机访问 Cloudflare/HF 均连接超时，本轮未能重新确认线上可用性；
+这不等同于已确认服务宕机，接手人应从独立网络并结合 Cloudflare deployments 状态复核。
 
 ## 数据边界
 

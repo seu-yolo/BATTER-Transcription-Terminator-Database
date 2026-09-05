@@ -16,7 +16,7 @@ verified materialized bundle
 
 The preview covers 22 sources (21 `published_standardized` + 1 `audit_only`), 20 release
 assembly records, 49 contigs, 32 source accessions, 22 tracks, 28,399 endpoints and 211
-registered assets (164 public). Source annotations remain HF/metadata assets; genes are
+registered assets (208 public). Source annotations remain HF/metadata assets; genes are
 omitted from D1 because the current catalogue UI/API does not query them. The D1 row is
 `release_version=v0.2.0, status=preview`: a rebuildable query projection, not promotion or
 a new `v0.3.0` dataset.
@@ -91,16 +91,20 @@ done
 
 Wrangler 4.125 local D1 rejects explicit SQL `BEGIN/COMMIT`; the generator emits plain
 INSERT batches and lets D1 handle statement execution. The final local smoke count is
-28,399 endpoints, 211 assets, 164 public assets, 22 sources and 20 assemblies.
+28,399 endpoints, 211 assets, 208 public assets, 22 sources and 20 assemblies.
 
 ## Remote deployment boundary
 
-The fixed HF revision has already passed 164/164 HEAD + single-byte Range audit. The remote
-preview is live at
+The fixed HF revision
+`463cfc8bd582a5ed9d2c426822148c3f1e56c4d0` has passed 208/208 HEAD +
+single-byte Range audit (196,667,360 bytes). The remote preview was last fully verified on
+2026-08-23 at
 `https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`, backed by the
 `bted-catalogue-v03-preview` D1 database. Do not put tokens/passwords in Git or logs. See
 [`docs/v0.3/deployment.md`](../../docs/v0.3/deployment.md) for the measured counts and smoke
-results.
+results. A 2026-09-06 check from the maintainer environment timed out while connecting to
+both Cloudflare and Hugging Face; treat current availability as not reverified, not as a
+confirmed outage.
 
 FastAPI/PostgreSQL/Next.js code remains a future/alternative path; Render/Neon/Vercel are not
 current deployment dependencies.

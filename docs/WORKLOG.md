@@ -1,5 +1,169 @@
 # 工作日志
 
+## 2026-09-06 —— 全量维护交接包
+
+**范围：** 将已部署 Cloudflare 基线、本地未提交改进、科学边界、运维步骤和权限要求整理为
+同事可独立接手的维护入口；不修改 canonical `v0.2.0`、D1 schema、公开 API 或 endpoint 数，
+不部署、不写远程 D1、不上传 HF 资产。
+
+- 从 `131b70f` 建立 `handoff/bted-maintainer-2026-09`，保留 S1_003 仪表盘、regional
+  BATTER-TPE pilot 和本地 asset fallback 的全部工作树改动。
+- 将 `docs/HANDOFF.md` 收敛为当前有效状态；历史过程继续由本文件与 Git 保存。
+- 新增 `docs/handoff/` 下的 operations、science/open work、access 和 demo/acceptance
+  四份文档，明确 deployed baseline 与 handoff branch 的差异。
+- README 与 Cloudflare prototype README 更新为固定 HF revision
+  `463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`、208 public objects、
+  196,667,360 bytes 和当前 audit hash；`docs/current-bted-status.md` 标为历史快照。
+- 明确线上技术栈是 Worker + D1（SQLite-compatible）+ Static Assets + pinned HF objects；
+  未使用 MySQL，FastAPI/PostgreSQL/Next.js 是 future/alternative。
+- C 类说明修正为“序列级训练数据存在，但当前 S1_003 reference mapping 未完成”。此前文件级
+  调查数字保留为待复核证据；2026-09-06 临时文件已不存在，且本轮 Cloudflare/HF/外部来源
+  HTTPS 连接超时，因此没有重新下载或冒充本轮复算。
+- 本轮还确认本地 8787/8790 均未运行。远端连接超时只记为“当前环境未复核”，不宣称服务宕机。
+- 权限交接只登记服务、角色和验证命令；未写入或转发现有 token、密码、SSH key 或恢复码。
+
+交接分支按三组提交：Worker 修复 `8c37aae`、S1_003 功能 `393106e`，以及本交接文档提交。
+2026-09-06 本轮实际验证为 focused 22/22 PASS、全量 141 tests PASS（3 个可选依赖 skip）、
+Worker `node --check` PASS、site validator（515 个文件）PASS、交接文档内部链接检查 PASS、
+canonical release summary 与固定 HF audit 文件离线核对 PASS、`git diff --check` PASS。
+线上 HTTP 与 C 大文件下载仍因当前网络超时而未复核；本记录不把历史 smoke 当成本轮新测试。
+
+## 2026-08-27 —— 本地 8787 asset proxy fallback 修复
+
+**触发问题：** 本地 `GET /api/assets/v0.2.0--assembly-GCF_000009045.1--fai` 曾因 Wrangler
+local workerd 无法连接固定的 Hugging Face origin 而抛出 HTTP 500（`Network connection lost`）。
+登记的 FAI 资产本身没有损坏：仍是 29 bytes，SHA-256 为
+`0576f9d30e1b56d95e928b5a19c622832e995a159cfc0281510a1d91e7f7b3c0`，固定 origin 的 HEAD/Range
+审计结果正常。
+
+### 修复范围
+
+- `prototype/accession-range/src/worker.js` 增加受限的 `LOCAL_ASSET_BASE`：只有请求来自
+  `localhost`/`127.0.0.1`，且该变量解析为无凭据、无 query/hash 的 HTTP loopback URL 时才使用本地
+  origin；非 loopback 请求继续使用 HTTPS 且 hostname allowlisted 的固定 Hugging Face origin。
+- upstream `fetch` 网络异常现在返回结构化 `502`：
+  `{ "error": "asset_origin_unavailable", "asset_key": "..." }`，并设置 `Cache-Control: no-store`，
+  不再把网络不可达伪装成无上下文的 500。502 只表示 origin 当前不可达，不表示资产内容恢复或被重新解释。
+- 未修改 FAI/FASTA/GFF3/TBI/BigWig/BED 内容、manifest checksum、D1 catalog、canonical endpoint、
+  evidence class 或接口路径；不把临时资产副本加入 Git，也未提交、推送或部署。
+
+### 本地复现与验证环境
+
+- 当前验证复用了已登记且 checksum 已核对的 S1_003 资产，在 `/private/tmp/bted-s1-003-assets.2DaVGK`
+  建立只读 symlink 目录和支持 GET/HEAD/单 Range 的临时 HTTP origin `127.0.0.1:8790`。
+- Wrangler local 在 `127.0.0.1:8787` 运行时显式传入
+  `LOCAL_ASSET_BASE=http://127.0.0.1:8790`；临时目录和进程停止后不会成为项目依赖。重启时需按同一
+  资产映射重新建立只读 origin，不能把大文件复制进仓库。
+- FAI GET 返回 200/29 bytes；FASTA、GFF3、TBI、正/负链 BigWig 和 canonical endpoint BED 的
+  单 Range 请求均返回 206，并保留登记的总长度与 asset headers。未使用 `wrangler --remote`，因为
+  那会上传并执行 Worker，超出本轮“不部署”范围。
+
+### 验证
+
+- `tests/test_bted_worker_assets.py`：4/4 PASS，覆盖 loopback fallback、非 loopback 忽略本地 origin、
+  非法 local origin 拒绝和网络异常结构化 502。
+- 与证据仪表盘、browser wrapper、动态 JBrowse 和 ingestion 合并运行的 focused suite：22/22 PASS。
+- `node --check prototype/accession-range/src/worker.js`：PASS；`python3 scripts/validate-site.py site`：
+  PASS（515 个站点文件）；`git diff --check`：PASS。
+- `python3 -m unittest discover -s tests -p 'test*.py' -q`：141 tests PASS，3 个可选依赖测试 skip。
+- 真实浏览器审计已完成：仪表盘打开正常；点击入口后 JBrowse 在
+  `NC_000964.3:18,000–28,000` 渲染 reference gene、正/负链 signal、Rend-seq endpoints 和
+  BATTER-TPE prediction，预测记录 `REGIONAL_0011` 可见；未见 HTTP 500 或 `Network connection lost`，
+  console 为 0 error / 0 warning。临时服务若退出，重启时仍需使用只读 loopback origin，勿改动科学数据。
+
+## 2026-08-27 —— S1_003 用户友好的证据仪表盘
+
+**范围：** 只调整 S1_003 证据展示页的文案、分组和响应式布局；不修改 Worker、pilot BED、canonical
+endpoint、坐标、证据类别或记录计数，不提交、推送或部署。
+
+- `site/evidence-layers-preview.html` 改为英文科研可视化仪表盘：标题为 “Explore the evidence
+  behind this genome”，使用 Measured 3′-end signal、Curated endpoint records、Training
+  augmentation examples 和 Model-predicted regions 四个自然名称，不再向用户展示分层字母。
+- 页面将 measured signal 与 curated records 归入 **Experimental evidence**，把 augmentation
+  examples 作为独立 **Model context**，把模型区间归入 **Computational output**；桌面端采用两列
+  卡片，窄屏按分组纵向排列。
+- 每张卡片保留一句易读解释、关键数字、状态和内联 SVG/CSS 图形；格式、evidence class、坐标和
+  限制收进可展开的 `Technical details`。augmentation 继续显示 unavailable，不推测任何坐标。
+- 模型卡片继续明确 `non-experimental` 与 `regional compatibility pilot`，保留 11 条区间、7 条
+  正链/4 条负链、pilot BED 下载和 provenance 链接；动态浏览器入口仍传入
+  `pilot=three-layer`。
+- S1_003 record/assembly 入口和静态生成器同步改用 “See the evidence together / Open evidence
+  dashboard”，避免重新生成页面后恢复旧的字母式 pilot 文案。
+
+### 验证
+
+- `python3 -m unittest -v tests/test_bted_three_layer_preview.py`：5/5 PASS。
+- `python3 scripts/validate-site.py site`：PASS；页面文案通过证据标签、凭据、绝对路径和内部链接检查。
+- `node --check prototype/accession-range/src/worker.js`：PASS。
+- `python3 -m unittest discover -s tests -p 'test*.py' -q`：137 tests PASS，3 个可选依赖测试 skip。
+- `git diff --check`：PASS。
+
+## 2026-08-27 —— S1_003 证据层图例与 D 轨道减拥挤说明
+
+- 在 `site/evidence-layers-preview.html` 增加 A/B/C/D 简洁图例；C 明确为 unavailable，图例字母
+  表示 provenance 而非置信度排序。
+- 保留 Worker 中 D track 的 `showLabels: false`，并在页面解释标签默认隐藏是为了减少 10 kb
+  视野重叠；用户仍可点击区间查看 score。score 明确为模型置信度，不是验证概率。
+- 未修改 pilot BED、canonical endpoint、坐标、证据类别或记录计数。
+
+## 2026-08-24 —— S1_003 A/B/D evidence-layer preview
+
+**分支：** `feature/three-layer-evidence-preview`
+**范围：** 只做 *Bacillus subtilis* 168（`BATTER_S1_003`、`GCF_000009045.1`、
+`NC_000964.3`）的 A/B/D 浏览器试点；不修改 v0.2 canonical endpoint 表，不新增 C 层伪数据，
+本轮未提交、推送或部署。
+
+### 完成内容
+
+- 新增 `site/evidence-layers-preview.html`：以科研用户视角展示 A 实验信号、B 实验来源端点、
+  D BATTER-TPE 预测；C 只保留一行 unavailable 说明，不生成 C track。
+- `site/records/BATTER_S1_003.html`、`site/assemblies/GCF_000009045.1.html` 增加试点入口；
+  `scripts/build_v0_2_site.py` 保证重新生成页面后入口仍保留。
+- `prototype/accession-range/src/worker.js` 在 S1_003 的动态 JBrowse config 中按
+  `reference gene → A raw signal → B endpoint → D model prediction` 顺序添加静态 D track。
+  D track 使用 `evidence_class=model_prediction`，明确 `experimental=false`，不进入 D1 endpoint
+  表，也不改变 S1_003 的 1,414 条 canonical `curated_record`。
+- 试点入口给动态 config 传入 `pilot=three-layer`。Worker 因而把默认视野直接设为
+  `NC_000964.3:18000–28000`，同时保留 default session 中全部五条 track；没有使用会覆盖
+  default session 的 JBrowse `loc` 深链。
+- 新增 `site/data/pilots/BATTER_S1_003_batter_tpe_regional_pilot.bed`，共 11 条官方 BATTER-TPE
+  输出（7 条 `+`、4 条 `-`），坐标位于 `NC_000964.3:18000–28000`；通过 offset 17,999 从
+  区域 BED 坐标恢复到全基因组 0-based BED 坐标。
+- 新增同目录 provenance JSON：记录官方 GitHub commit
+  `9133d2d36b60c238a1e36760a296eff9f001fb72`、`batter.mdl.pt` SHA-256、参考 FASTA SHA-256、
+  输入范围、命令、模型输出数、正负链统计、环境兼容调整和限制。
+
+### D 层真实运行与兼容性说明
+
+- 使用官方仓库 `scripts/batter-tpe` 和官方 `model/batter.mdl.pt`。旧仓库依赖环境不能在当前
+  Python 3.13/torch 2.11 直接加载：新 `transformers` 注册了 `position_ids` buffer，旧 CRF
+  使用 `.view()` 对非 contiguous tensor 报错。只在 `/private/tmp` 的隔离执行副本中使用
+  `strict=False`（唯一额外 state-dict key 为该 buffer）并将 CRF `.view()` 改为 `.reshape()`；
+  官方 clone 未修改。
+- 官方 E. coli 示例 `NC_000913.3:1–6000` 做 sanity check：参考 `TPE.bed` 中 7 条记录有
+  6 条坐标、链和 score 完全一致；`5032–5075 (+, 0.902)` 在兼容环境中为 `5036–5078 (+,
+  0.912)`。因此页面和轨道称为 **compatibility pilot**，不宣称复现作者旧环境的每个字节。
+- S1_003 区域实际输出 11 条；D 是 BATTER-TPE 区间预测，不是单碱基实验端点，不能并入 B 表。
+
+### 验证
+
+- `python3 -m unittest -v tests/test_bted_three_layer_preview.py`：5/5 PASS。
+- `python3 -m unittest -v tests/test_bted_browser_wrapper.py tests/test_bted_v03_browser.py tests/test_bted_ingestion.py`：13/13 PASS。
+- `node --check prototype/accession-range/src/worker.js`：PASS。
+- `python3 scripts/validate-site.py site`：PASS（站点允许小型 `site/data/pilots/*.bed` 试点资产）。
+- `python3 -m unittest discover -s tests -p 'test*.py' -q`：137 tests PASS，3 个可选依赖测试 skip。
+- 真实浏览器 smoke：试点入口打开后直接定位 `NC_000964.3:18,000–28,000`，依次显示 gene、
+  A 正链信号、A 负链信号、B Rend-seq endpoints 和 D BATTER-TPE prediction；D 的 11 条区间
+  均可见，页面 console 0 error / 0 warning。测试使用本地 Worker 静态站点与只读远程 D1 binding，
+  未执行正式部署。
+- `git diff --check`：PASS。
+
+### 未完成
+
+- 本轮未进行 Cloudflare Worker 正式部署；部署前仍需复核远程 preview 的静态 D BED 与动态
+  config 使用同一版本代码。
+- C 层仍未提供；只有取得 BATTER 扩增实例的可追溯坐标后再另行建轨道。
+
 ## 2026-08-23 —— JBrowse user-facing information wrapper
 
 **范围：** 只调整浏览器入口和静态展示层；不修改 JBrowse bundle、canonical endpoint 数据、
