@@ -195,9 +195,24 @@ def jbrowse_href(config_url: str, prefix: str = "") -> str:
     The bundled JBrowse application remains at ``jbrowse/index.html``.  Public
     catalogue links go through the small wrapper so users see the organism,
     source, publication, raw accession and download links before entering the
-    browser.  Keeping this in the generator makes source/assembly/record links
-    consistent instead of maintaining them in individual HTML files.
+    browser.
+
+    Starting from v0.2 the wrapper uses the ``?assembly=`` parameter which
+    works entirely from static metadata and does not require the v0.3 preview
+    Cloudflare Worker.
     """
+    # Extract assembly accession and optional source_id from a v0.3 config URL
+    # so existing code paths continue to work without internal refactoring.
+    match = re.search(r"/assemblies/([^/?]+)/jbrowse-config", config_url)
+    if match:
+        assembly = match.group(1)
+        parts = [("assembly", assembly)]
+        source_match = re.search(r"source_id=([^&]+)", config_url)
+        if source_match:
+            parts.append(("source_id", source_match.group(1)))
+        query = "&".join(f"{k}={quote(v, safe='')}" for k, v in parts)
+        return f"{prefix}browser.html?{query}"
+    # Fallback: keep the config URL as-is for v0.3 preview compatibility
     return f"{prefix}browser.html?config={quote(config_url, safe='')}"
 
 
