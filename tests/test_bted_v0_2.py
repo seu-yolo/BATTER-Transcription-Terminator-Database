@@ -262,9 +262,10 @@ class TestBtedV020Release(unittest.TestCase):
             self.assertTrue(all("Full evidence view" in track["category"] for track in tracks[3:]))
 
         s1_003_page = (REPO_ROOT / "site/records/BATTER_S1_003.html").read_text(encoding="utf-8")
-        self.assertIn("Read both strands in one compact view", s1_003_page)
-        self.assertIn("values below zero are a display convention", s1_003_page)
-        self.assertIn("Click a candidate for details", s1_003_page)
+        self.assertIn("Compare raw signal with reported endpoints", s1_003_page)
+        self.assertIn("BTED does not normalize the displayed signal", s1_003_page)
+        self.assertIn("PubMed/DOI, raw-data accession", s1_003_page)
+        self.assertIn("Track menu: paper and raw-data links", s1_003_page)
 
     def test_release_and_site_validators_pass(self) -> None:
         for command in (

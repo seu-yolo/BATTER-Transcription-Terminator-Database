@@ -61,10 +61,10 @@ ABSOLUTE_PATH_PATTERNS = [
     (re.compile(r"[A-Za-z]:\\\\[^\s\"'<)]+"), "Windows 本地路径"),
 ]
 
-# localhost / 127.0.0.1 / 内部 API endpoint 不应出现在正式 site/
+# localhost / 127.0.0.1 / old local API endpoint 不应出现在正式 site/；当前
+# Cloudflare preview site intentionally uses its same-origin catalogue API for JBrowse config.
 LOCALHOST_API_PATTERNS = [
     (re.compile(r"127\.0\.0\.1|localhost", re.IGNORECASE), "localhost / 127.0.0.1 引用"),
-    (re.compile(r"/api/assemblies", re.IGNORECASE), "内部 API 路径 /api/assemblies"),
 ]
 
 # 凭据 / 密钥 / 口令占位
@@ -221,13 +221,15 @@ def main() -> int:
             suffixes = [s.lower() for s in fpath.suffixes]
             in_jbrowse = rel == "jbrowse" or rel.startswith("jbrowse/")
             in_downloads = rel == "downloads" or rel.startswith("downloads/")
+            in_pilots = rel == "data/pilots" or rel.startswith("data/pilots/")
             compound_suffix = "".join(suffixes[-2:]) if len(suffixes) >= 2 else (suffixes[-1] if suffixes else "")
             jbrowse_allowed = in_jbrowse and (
                 fpath.suffix.lower() in ALLOWED_JBROWSE_SUFFIXES
                 or compound_suffix in ALLOWED_JBROWSE_SUFFIXES
             )
             download_allowed = in_downloads and fpath.suffix.lower() in ALLOWED_DOWNLOAD_SUFFIXES
-            if any(s in FORBIDDEN_EXTENSIONS for s in suffixes) and not (jbrowse_allowed or download_allowed):
+            pilot_allowed = in_pilots and fpath.suffix.lower() == ".bed"
+            if any(s in FORBIDDEN_EXTENSIONS for s in suffixes) and not (jbrowse_allowed or download_allowed or pilot_allowed):
                 problems.append(f"{rel} 禁止的文件类型（原始数据/工作簿/压缩包/坐标文件）")
             size_limit = MAX_JBROWSE_FILE_BYTES if in_jbrowse else (MAX_DOWNLOAD_FILE_BYTES if in_downloads else MAX_FILE_BYTES)
             if size > size_limit:

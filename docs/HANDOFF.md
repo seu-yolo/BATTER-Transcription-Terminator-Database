@@ -1,118 +1,149 @@
-# BTED Handoff
+# BTED 当前维护交接
 
-Use this file to transfer work between Kimi, OpenAI, or collaborators. Replace the filled handoff for each transfer; keep the durable decision in the relevant source processing record.
+**更新日期：** 2026-09-06
 
-## Handoff — 2026-08-18 — BTED v0.2 GitHub Pages 静态发布
+**用途：** 同事从零接手代码、数据边界、预览站和后续开发
 
-### Objective
+**当前工作树：** `/Users/seu_yolo/Desktop/BGIRNA/.worktrees/bted-v0.3-dynamic-service`
 
-将 `feature/research-user-dataset-context-v0.1` 上已收敛的核心字段 accession 页面迁移到 GitHub Pages 可用的纯静态实现，完成个人仓库部署和线上验证。
+**交接分支：** `handoff/bted-maintainer-2026-09`，基于 `131b70f`
 
-### 已完成
+本文件只描述当前有效状态。完整开发历史保存在 `docs/WORKLOG.md` 和 Git；具体操作、科学边界、
+权限与演示分别见：
 
-- 本地代码、数据、测试全部通过（21/21 测试，全部校验脚本 PASS）。
-- `integration/bted-v0.2-site-release` 已推送到 `seu-yolo/BATTER-Transcription-Terminator-Database`。
-- PR #2 已创建并合并到 `seu-yolo/main`：merge commit `f9b3205926b8223f7427d1f7e8758ab0b267bc92`。
-- GitHub Actions `Deploy BTED Pages` run `32054805656` 已完成并成功部署。
-- 线上地址：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/
+- [维护与运行手册](handoff/OPERATIONS_RUNBOOK.md)
+- [科学边界与未完成工作](handoff/SCIENCE_AND_OPEN_WORK.md)
+- [权限交接清单](handoff/ACCESS_CHECKLIST.md)
+- [同事演示与接手验收](handoff/DEMO_AND_ACCEPTANCE.md)
 
-### 主要改动文件
+## 1. 项目与当前数据
 
-- `scripts/build_v0_2_site.py`：新增 `build_assemblies_json()` 生成 `site/data/assemblies.json`。
-- `site/assets/accession-range-demo.js`：改为静态 JSON 查找；移除 `/api/assemblies` 和 localhost。
-- `site/css/style.css`：新增 `.source-status-badge` 状态标签样式。
-- `site/data/assemblies.json`：新增静态 accession 数据（自动生成）。
-- `scripts/validate-site.py`：新增 localhost/API 依赖扫描。
-- `scripts/validate_repo_layout.py`：允许 `prototype/` 顶层目录。
-- `tests/test_bted_v0_2.py`：新增 `test_static_assemblies_json_powers_accession_search`。
+BTED（Bacterial Transcript 3′ End Database）将公开细菌转录 3′ 端实验整理成可追溯、可下载、
+可在 JBrowse 中核对的标准资源。
 
-### 数据边界
+| 项目 | 当前值 |
+|---|---:|
+| canonical release | `v0.2.0` |
+| 原始研究论文 | 13 |
+| source records | 22 |
+| `published_standardized` / `audit_only` | 21 / 1（S1_002） |
+| assembly records / 去重可浏览 assembly | 20 / 19 |
+| contigs / source accessions / tracks | 49 / 32 / 22 |
+| endpoints | 28,399 |
+| `author_called_endpoint` / `curated_record` | 24,887 / 3,512 |
+| GFF-derived genes | 95,437（已物化，当前 D1 catalogue 不查询） |
+| registered assets / public HF objects | 211 / 208 |
 
-- 22 个来源 / 20 个组装 / 28,399 条核心记录未变。
-- S1_002 仍为 `audit_only`；Rend-seq 来源为 `signal_endpoints`；其余为 `endpoints_only`。
-- 未修改任何端点坐标、BED、证据类别或记录数。
+`v0.3` 是服务架构的 developer preview 名称，不是新的 `v0.3.0` biological data release。
 
-### Release/JBrowse 资产
+## 2. 当前运行架构
 
-- Release tag：`preview-v0.2.0`
-- 资产：`BTED-v0.2.0-jbrowse-assets.tar.gz`（2026-08-17 18:24 UTC 替换为包含 `.gff3` 等完整资产的版本）
-- 替换原因：GitHub 上原有 asset 为 2026-08-10 版本，缺少本地 dist 中已验证的 `BATTER_S1_001__ecoli_geneproximal.combined.browser.gff3`，导致 Pages 部署时 `validate_jbrowse_release.py` 失败。
-- 校验文件：`BTED-v0.2.0-jbrowse-assets.tar.gz.sha256` 已同步更新。
+```text
+canonical v0.2 files + registries
+          ↓
+verified materialized bundle
+          ↓
+Cloudflare D1 query projection
+          ↓
+Worker API + Worker Static Assets + dynamic JBrowse config
+          ↓
+allowlisted same-origin asset proxy
+          ↓
+pinned Hugging Face objects
+```
 
-### 线上验证清单（HTTP 200 已确认）
+- Worker：`bted-catalogue-v03-preview`
+- 线上地址：`https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev`
+- D1：`bted-catalogue-v03-preview`，binding `BTED_DB`
+- HF dataset：`seu-yolo/BTED-v0.3-assets`
+- 固定 revision：`463cfc8bd582a5ed9d2c426822148c3f1e56c4d0`
+- 远端审计：208/208 objects，196,667,360 bytes；证据文件 SHA-256
+  `8df250f34c94f4ce858694575356649c4da1336ab6a1011e52a756bdd99551cf`
 
-- 首页：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/
-- Genomes 目录：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/sources.html
-- accession 查询（EN）：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/accession-range-demo.html?accession=GCF_000739105.1&lang=en
-- accession 查询（ZH）：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/accession-range-demo.html?accession=GCF_000739105.1&lang=zh
-- `GCF_000739105.1` assembly 页：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/assemblies/GCF_000739105.1.html
-- `BATTER_S1_003` Rend-seq 记录页：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/records/BATTER_S1_003.html
-- JBrowse 配置：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/jbrowse/assemblies/GCF_000739105.1.config.json
-- BED 下载：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/downloads/assemblies/GCF_000739105.1/endpoints.bed
-- metadata 下载：https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/downloads/assemblies/GCF_000739105.1/metadata.json
+当前系统没有使用 MySQL。D1 是 SQLite-compatible 查询投影；仓库中的 FastAPI/PostgreSQL/Next.js
+是 future/alternative path，未作为线上服务运行。
 
-### 建议的下一步
+## 3. 已部署基线与本地交接分支
 
-1. 在真实浏览器中打开线上 accession 页面，确认：
-   - 默认加载 `GCF_000739105.1` 后显示 2 个来源、2,848 条记录；
-   - 中英文切换正常；
-   - JBrowse 按钮打开后能看到 1 个共享参考 + 2 条独立来源 track；
-   - Rend-seq 页面（如 S1_003）能看到 BigWig peak；
-   - S1_002 页面没有 JBrowse 按钮；
-   - 浏览器控制台无 404/CORS/JS 错误。
-2. 如需更新数据，修改来源 manifest/registry 后重跑：
-   ```bash
-   python3 scripts/build_v0_2_site.py
-   python3 scripts/build_assembly_downloads.py --output-dir dist/assembly-downloads
-   python3 scripts/validate-site.py site
-   python3 -m unittest -v tests/test_bted_ingestion.py tests/test_bted_v0_2.py tests/test_accession_range_prototype.py
-   ```
-3. 如需更新 JBrowse 大型资产：
-   - 重新生成 `dist/BTED-v0.2.0-jbrowse`；
-   - 建议创建新 Release tag（如 `preview-v0.2.1`）并更新 `.github/workflows/pages.yml` 中的 `RELEASE_TAG`；
-   - 不要静默覆盖已发布版本而不记录。
-4. 个人仓库 `main` 已部署；上游 `LIMwhatnameisavailable` 仓库未动，如需同步需单独提 PR。
+| 能力 | 已部署基线 | 交接分支 | 是否上线 |
+|---|---|---|---|
+| catalogue/source/assembly/endpoint/augmentation API | 有 | 保留 | 是 |
+| 动态 JBrowse config 与同源 HF Range proxy | 有 | 保留 | 是 |
+| JBrowse 顶部论文、accession、BED 与详情入口 | 有 | 保留 | 是 |
+| S1_003 自然名称证据仪表盘 | 无 | 有 | 否 |
+| S1_003 BATTER-TPE regional compatibility pilot | 无 | 11 条，7 + / 4 − | 否 |
+| loopback `LOCAL_ASSET_BASE` fallback | 无 | 有 | 否 |
+| origin 网络异常结构化 `502 asset_origin_unavailable` | 无 | 有 | 否 |
 
-## Handoff — 2026-08-18（续）—— 文档 PR 清理与线上浏览器验证
+最后一次完整线上验收记录为 2026-08-23，JBrowse wrapper 对应 Worker version
+`679cff52-8779-4bdd-9346-63d180278b53`。2026-09-06 本机访问 Cloudflare 和 Hugging Face
+均在 HTTPS 建连时超时；这表示本轮无法复核，不足以判断远端服务是否宕机。接手后应从独立网络并结合
+Cloudflare deployments 状态复核。
 
-### 继续完成的内容
+## 4. S1_003 证据试点
 
-- 处理了 PR #3（`docs/bted-v0.2-handoff` → `main`）的合并冲突：该分支从本地 feature 分支推送，包含已在 PR #2 中 squash 合并的代码提交，导致 `mergeable_state: dirty`。
-- 从当前 `personal/main`（`f9b3205`）新建干净 docs-only 分支 `docs/bted-v0.2-handoff-v2`，仅保留 `docs/WORKLOG.md` 与 `docs/HANDOFF.md` 的更新，并推送到 `seu-yolo/BATTER-Transcription-Terminator-Database`。
-- 线上 Playwright 浏览器验证完成：
-  - 首页：标题 `Home · BTED`，统计 `20 assemblies · 22 source tracks · 28,399 records`。
-  - `accession-range-demo.html?accession=GCF_000739105.1&lang=zh`：中文界面，显示 `Streptomyces lividans TK24`、`CP009124.1`、2 个来源、2,848 条记录；两篇论文 PMID 31555254 / PMID 33319794，原始数据 PRJEB31507，证据类型“作者定义端点”；提供 BED 与 metadata 下载。
-  - JBrowse `assemblies/GCF_000739105.1.config.json`：加载 1 个参考序列 + NCBI gene annotation + `BATTER_S1_007` + `BATTER_S1_013` 共 2 条独立来源 track；控制台无 error，网络请求无 404。
-  - `records/BATTER_S1_002.html`：`Metadata only`、`audit_only`、0 条记录，无 JBrowse 入口，仅提供 metadata 下载。
-  - `records/BATTER_S1_001.html`：Rend-seq、`curated_record`、607 条记录，含 `Signal · blue + above zero · orange − below zero` BigWig 信号 track 入口。
-  - 中英文切换按钮在 accession 页面正常工作。
-- 本地回归测试与校验脚本全部 PASS：
-  - `python -m unittest -v tests/test_bted_ingestion.py`：4/4 PASS。
-  - `python scripts/validate-site.py site` / `.pages-preview`：PASS。
-  - `python scripts/validate_jbrowse_release.py`：PASS。
-  - `python scripts/validate_repo_layout.py`：PASS。
+- 对象：*Bacillus subtilis* 168，`BATTER_S1_003`
+- assembly / contig：`GCF_000009045.1` / `NC_000964.3`
+- 区域：18,000–28,000
+- measured signal：Rend-seq 正/负链 raw BigWig
+- curated endpoints：Lalanne Table S3，1,414 条
+- training augmentation：有 BATTER 序列级训练数据背景，但当前 assembly 映射未完成，无坐标 track
+- model output：BATTER-TPE regional compatibility pilot，11 条区间；`experimental=false`
 
-### 当前阻塞
+页面是 `site/evidence-layers-preview.html`；dynamic config 参数为
+`source_id=BATTER_S1_003&pilot=three-layer`。D 的 BED 和 provenance 位于
+`site/data/pilots/`，不得并入 canonical endpoint 表。
 
-- GitHub 连接器（Codex GitHub app）在本仓库仅有只读权限，`_create_pull_request` / `_merge_pull_request` / `_update_pull_request` 均返回 `403 Resource not accessible by integration`。
-- `gh auth status` 显示 `seu-yolo` token 已失效；`gh auth login` 在沙箱内无法完成浏览器/设备流授权。
-- 因此无法自动创建/合并 `docs/bted-v0.2-handoff-v2` 的 PR，也无法自动关闭冲突的 PR #3。
+## 5. 证据底线
 
-### 需要人工完成的步骤
+- `observed_signal`、`called_endpoint`、`author_called_endpoint`、`curated_record`
+  和 `model_prediction` 必须分开。
+- prediction-only 或混合证据不得发布为 experimental endpoint。
+- 生物学坐标是 1-based；单碱基 BED 是 0-based half-open。
+- 不跨 contig 匹配；无法核实 evidence/reference/coordinate/strand 时标
+  `blocked`/`to_review`，不得猜测。
+- 3′ end record 不自动等于功能验证的转录终止子；模型 score 也不是现实世界验证概率。
 
-1. 在浏览器中登录 GitHub 账号 `seu-yolo` 后访问：
-   - 关闭冲突的 PR #3：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/pull/3
-   - 创建新 PR：https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database/compare/main...docs/bted-v0.2-handoff-v2
-2. 新 PR 标题建议：`docs: update WORKLOG and HANDOFF for v0.2 Pages deployment`
-3. 检查 CI（ Pages workflow 不会在此 docs-only PR 上触发，但可确认无冲突）后合并到 `main`。
-4. 合并后观察 Pages workflow 是否因 docs 更新而重新部署（通常 docs 变更不影响站点产物，但会触发一次 no-op build）。
+## 6. Git、worktree 与远端
 
-### 保留的分支
+- `origin`：`LIMwhatnameisavailable/BATTER-Transcription-Terminator-Database`
+- `personal`：`seu-yolo/BATTER-Transcription-Terminator-Database`
+- 当前交接分支推送目标：`personal/handoff/bted-maintainer-2026-09`
 
-- 个人仓库远程分支：`docs/bted-v0.2-handoff-v2`（commit `0dc4a73`，基于 `personal/main` `f9b3205`，仅修改 `docs/WORKLOG.md` 与 `docs/HANDOFF.md`）。
-- 本地工作树当前位于 `/Users/seu_yolo/Desktop/BGIRNA/.worktrees/assembly-track-download-demo` 的 `docs/bted-v0.2-handoff-v2` 分支。
+2026-09-06 的 worktree 快照：
 
-### 数据边界（重申）
+| worktree | branch | 状态/用途 |
+|---|---|---|
+| `BATTER-Transcription-Terminator-Database` | `refactor/project-structure-and-literature-notes-v0.1` | clean；相对 origin behind 1 |
+| `.worktrees/assembly-track-download-demo` | `docs/bted-v0.2-handoff-v2` | clean；历史 v0.2 交接，远端分支保留 |
+| `.worktrees/bted-v0.2` | `agent/bted-v0.2-public-demo` | clean；历史 demo |
+| `.worktrees/bted-v0.3-dynamic-service` | 本交接分支 | 当前维护线 |
+| `.worktrees/pr3-cleanup` | `agent/pr3-layout-cleanup` | clean；历史 cleanup |
 
-- 本次后续操作未修改任何科学数据、BED、JBrowse 资产、证据类别或记录数。
-- 仅更新项目文档与验证记录。
+不要自动合并或删除这些历史分支/worktree；先根据 Git 历史判断是否已被当前维护线吸收。
+
+## 7. 接手顺序
+
+1. clone `personal` 仓库并切换 `handoff/bted-maintainer-2026-09`。
+2. 阅读 `AGENTS.md`、本文件、四份 handoff 文档、数据入库 SOP。
+3. 运行 focused/full tests、Worker syntax、site validator 和 `git diff --check`。
+4. 使用自己的 GitHub/Cloudflare/HF 账号完成只读权限核验。
+5. 从独立网络检查线上 API、JBrowse 和代表性资产 HEAD/Range。
+6. 按 `DEMO_AND_ACCEPTANCE.md` 复现本地页面；不要依赖原维护者的 `/private/tmp`。
+7. 将第一项工作限定为一个 source 或一个共享基础设施变更，继续更新 WORKLOG。
+
+## 8. 优先未完成事项
+
+1. 决定是否部署本分支的仪表盘、D pilot 和 local asset fallback；部署前必须重新验收。
+2. 重新下载并复核 BATTER training FASTA，先形成序列级 catalogue，再单独做 assembly mapping。
+3. 设计 signed-log 派生信号显示，同时保留 raw track 和原始数值。
+4. 定义并验证 `endpoint_gene_context`；当前不能宣称已完成。
+5. 以有实验来源的 assembly 和 GTDB representative genome 做扩展试点，不把预测混入实验数据。
+6. 决定 developer preview 是否升级为 production/custom domain。
+
+## 9. 不属于本次交接提交的操作
+
+- 未部署 Worker，未写入远程 D1，未上传或重写 HF 对象；
+- 未修改 canonical `v0.2.0`、D1 schema、公开 API 或 endpoint 数；
+- 未添加 credential、数据库 dump、原始 FASTQ/BAM/WIG 或 BATTER 大文件；
+- 未邀请同事账号：执行邀请仍需要其 GitHub、Cloudflare 和 Hugging Face 身份标识。

@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import html
 import json
+import os
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -18,9 +19,12 @@ RELEASE_PATH = REPO_ROOT / "data/public/v0.2.0/release_manifest.json"
 REGISTRY_PATH = REPO_ROOT / "data/registry/batter_s1_source_registry.tsv"
 RECORD_ROOT = REPO_ROOT / "data/public/v0.2.0/records"
 REPOSITORY_URL = "https://github.com/seu-yolo/BATTER-Transcription-Terminator-Database"
-JBROWSE_CONFIG_VERSION = "20260814-strand-ui-v4"
 SITE_ASSET_VERSION = "20260817-core-fields-v2"
 ACCESSION_RANGE_PILOT = "GCF_000739105.1"
+BTED_PREVIEW_ORIGIN = os.environ.get(
+    "BTED_PREVIEW_ORIGIN",
+    "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev",
+).rstrip("/")
 
 EVIDENCE_LABELS = {
     "author_called_endpoint": "Author-called experimental endpoint",
@@ -161,13 +165,20 @@ def status_badge(status: str) -> str:
     return f'<span class="badge badge-published">{bi("Data available", "数据可用")}</span>'
 
 
+def jbrowse_config_url(assembly: str, source_id: str | None = None) -> str:
+    path = f"{BTED_PREVIEW_ORIGIN}/api/assemblies/{quote(assembly, safe='')}/jbrowse-config"
+    if source_id:
+        path += f"?source_id={quote(source_id, safe='')}"
+    return path
+
+
 def assembly_browser_config(assembly: str, records: list[dict[str, object]]) -> str | None:
     published = [record for record in records if record["has_jbrowse"]]
     if not published:
         return None
     if len(published) > 1:
-        return f"assemblies/{assembly}.config.json"
-    return f"{published[0]['source_id']}.config.json"
+        return jbrowse_config_url(assembly)
+    return jbrowse_config_url(assembly, str(published[0]["source_id"]))
 
 
 def assembly_download_url(assembly: str, filename: str, prefix: str = "") -> str:
@@ -178,9 +189,31 @@ def record_download_url(source_id: str, filename: str, prefix: str = "") -> str:
     return f"{prefix}downloads/records/{source_id}/{filename}"
 
 
-def jbrowse_href(config: str, prefix: str = "") -> str:
-    versioned_config = f"{config}?v={JBROWSE_CONFIG_VERSION}"
-    return f"{prefix}jbrowse/index.html?config={quote(versioned_config, safe='')}"
+def jbrowse_href(config_url: str, prefix: str = "") -> str:
+    """Return the user-facing browser wrapper URL.
+
+    The bundled JBrowse application remains at ``jbrowse/index.html``.  Public
+    catalogue links go through the small wrapper so users see the organism,
+    source, publication, raw accession and download links before entering the
+    browser.
+
+    Starting from v0.2 the wrapper uses the ``?assembly=`` parameter which
+    works entirely from static metadata and does not require the v0.3 preview
+    Cloudflare Worker.
+    """
+    # Extract assembly accession and optional source_id from a v0.3 config URL
+    # so existing code paths continue to work without internal refactoring.
+    match = re.search(r"/assemblies/([^/?]+)/jbrowse-config", config_url)
+    if match:
+        assembly = match.group(1)
+        parts = [("assembly", assembly)]
+        source_match = re.search(r"source_id=([^&]+)", config_url)
+        if source_match:
+            parts.append(("source_id", source_match.group(1)))
+        query = "&".join(f"{k}={quote(v, safe='')}" for k, v in parts)
+        return f"{prefix}browser.html?{query}"
+    # Fallback: keep the config URL as-is for v0.3 preview compatibility
+    return f"{prefix}browser.html?config={quote(config_url, safe='')}"
 
 
 def browser_reading_guide(assays: list[str]) -> str:
@@ -189,9 +222,9 @@ def browser_reading_guide(assays: list[str]) -> str:
     if not any("rend-seq" in assay.lower() for assay in assays):
         return ""
     return """
-    <section class="panel browser-guide"><div class="panel-header"><div><p class="eyebrow">Genome browser guide</p><h2>Read both strands in one compact view</h2></div><span class="browser-guide-hint">Click a candidate for details</span></div>
-      <div class="strand-legend" aria-label="Strand colour legend"><div><span class="strand-swatch plus"></span><strong>+ strand</strong><span>blue signal above zero · arrows point right</span></div><div><span class="strand-swatch minus"></span><strong>− strand</strong><span>orange signal below zero · arrows point left</span></div></div>
-      <p class="section-note"><strong>Important:</strong> values below zero are a display convention for the − strand, not negative abundance. Candidate marks are local signal peaks, not automatically proven terminators. Click a mark to inspect its stable ID, 1-based coordinate, strand, raw support and evidence warning.</p>
+    <section class="panel browser-guide"><div class="panel-header"><div><p class="eyebrow">Genome browser guide</p><h2>Compare raw signal with reported endpoints</h2></div><span class="browser-guide-hint">Track menu: paper and raw-data links</span></div>
+      <div class="strand-legend" aria-label="Strand track legend"><div><span class="strand-swatch plus"></span><strong>+ strand signal</strong><span>raw repository values in a dedicated track</span></div><div><span class="strand-swatch minus"></span><strong>− strand signal</strong><span>raw repository values in a dedicated track</span></div></div>
+      <p class="section-note"><strong>Important:</strong> BTED does not normalize the displayed signal. The endpoint track remains separate from the two signal tracks. Open a source track menu to find the paper, PubMed/DOI, raw-data accession and BTED record links.</p>
     </section>"""
 
 
@@ -200,8 +233,9 @@ def record_page(record: dict[str, object], assembly_track_count: int) -> str:
     source = record["source"]
     manifest = record["manifest"]
     status = str(record["release_status"])
+    assembly = str(record["assembly"])
     browser = (
-        f'<a class="button primary" href="{jbrowse_href(f"{source_id}.config.json", "../")}">{bi("Open source track", "打开来源 track")}</a>'
+        f'<a class="button primary" href="{jbrowse_href(jbrowse_config_url(assembly, source_id), "../")}">{bi("Open source track", "打开来源 track")}</a>'
         if record["has_jbrowse"] else f'<span class="button disabled">{bi("No endpoint track", "无端点 track")}</span>'
     )
     bed = (
@@ -210,9 +244,14 @@ def record_page(record: dict[str, object], assembly_track_count: int) -> str:
     )
     metadata = f'<a class="download-card" href="{assembly_download_url(str(record["assembly"]), "metadata.json", "../")}"><strong>{bi("Assembly metadata", "组装元数据")}</strong><code>metadata.json</code></a>'
     evidence = str(record["evidence_class"])
-    assembly = str(record["assembly"])
     raw_accessions = accession_links(source["raw_data_accessions"], str(manifest.get("raw_data_url", "")))
     browser_guide = browser_reading_guide([str(source["assay_family"])]) if record["has_jbrowse"] else ""
+    evidence_preview = (
+        '<section class="panel evidence-preview-link"><div><p class="eyebrow">Evidence dashboard</p>'
+        '<h2>See the evidence together</h2><p>Compare this source\'s measured signal, curated endpoint records and a separate BATTER-TPE compatibility pilot.</p></div>'
+        '<a class="button" href="../evidence-layers-preview.html">Open evidence dashboard</a></section>'
+        if source_id == "BATTER_S1_003" and record["has_jbrowse"] else ""
+    )
     content = f"""
 <main class="page-shell record-shell">
   <nav class="breadcrumbs"><a href="../sources.html">{bi('Genomes', '基因组')}</a><span>/</span><a href="../assemblies/{esc(assembly)}.html">{esc(assembly)}</a><span>/</span><span>{source_id}</span></nav>
@@ -222,7 +261,7 @@ def record_page(record: dict[str, object], assembly_track_count: int) -> str:
     <section class="panel"><div class="panel-header"><h2>{bi('Source overview', '来源概况')}</h2>{browser}</div><dl class="data-list">
       <dt>{bi('Dataset', '数据集')}</dt><dd>{esc(manifest.get('dataset_id', 'NA'))}</dd><dt>{bi('Publication year', '发表年份')}</dt><dd>{esc(source['published_year'])}</dd>
       <dt>{bi('Evidence', '证据说明')}</dt><dd><code>{esc(evidence)}</code> · {esc(EVIDENCE_LABELS.get(evidence, evidence))}</dd><dt>{bi('Tracks on this assembly', '该组装上的 track')}</dt><dd>{assembly_track_count}</dd>
-    </dl></section>{browser_guide}
+    </dl></section>{browser_guide}{evidence_preview}
     <section class="panel"><h2>{bi('Raw data accessions', '原始数据')}</h2><p class="section-note">Open the public repository record for each accession number.</p>{raw_accessions}</section>
     <section class="panel"><h2>{bi('Download', '下载')}</h2><p class="section-note">{bi('The page exposes the analysis-ready BED and one metadata document. Detailed provenance remains in the repository.', '页面只突出分析所需的 BED 和一份元数据；完整追溯信息仍保留在仓库中。')}</p><div class="download-grid compact-downloads">{bed}{metadata}</div></section>
     <section class="panel"><h2>{bi('Data note', '数据说明')}</h2><p>{esc(manifest.get('known_limitations', source['blocker_or_note']))}</p><div class="evidence-note">{bi('A 3′ end record is not automatically a functionally proven terminator. Tracks from the same assembly remain separate evidence sources.', '3′ end 记录不自动等同于功能性终止子；同一组装上的不同 track 仍是独立证据来源。')}</div></section>
@@ -261,6 +300,12 @@ def assembly_page(assembly: str, records: list[dict[str, object]]) -> str:
     browser_guide = browser_reading_guide(
         [str(record["source"]["assay_family"]) for record in records if record["has_jbrowse"]]
     )
+    evidence_preview = (
+        '<section class="panel evidence-preview-link"><div><p class="eyebrow">Evidence dashboard</p>'
+        '<h2>See the evidence together</h2><p>Compare the S1_003 measured signal, curated endpoint records and a separate BATTER-TPE compatibility pilot.</p></div>'
+        '<a class="button" href="../evidence-layers-preview.html">Open evidence dashboard</a></section>'
+        if assembly == "GCF_000009045.1" else ""
+    )
     pilot_note = (
         """
   <section class="panel edge-prototype-callout"><div><p class="eyebrow">Quick genome search</p><h2>Two experimental studies are available for this assembly</h2><p>Search the assembly accession to see both studies, open their independent tracks, and download analysis-ready coordinates.</p></div><a href="../accession-range-demo.html?accession=GCF_000739105.1">Search this genome →</a></section>"""
@@ -271,7 +316,7 @@ def assembly_page(assembly: str, records: list[dict[str, object]]) -> str:
   <nav class="breadcrumbs"><a href="../sources.html">{bi('Genomes', '基因组')}</a><span>/</span><span>{esc(assembly)}</span></nav>
   <div class="record-heading"><div><p class="eyebrow">{bi('Reference assembly', '参考组装')}</p><h1>{esc(assembly)}</h1><p class="record-title"><em>{esc(' / '.join(organisms))}</em></p><p><a href="{assembly_accession_url(assembly)}" target="_blank" rel="noopener">View assembly in NCBI Datasets</a></p></div>{status_badge('published' if published else 'audit_only')}</div>
   <section class="metric-grid"><div class="metric"><span>{bi('Source tracks', '来源 track')}</span><strong>{len(records)}</strong></div><div class="metric"><span>{bi('Endpoint records', '端点记录')}</span><strong>{total:,}</strong></div><div class="metric"><span>{bi('Years', '年份')}</span><strong>{years[0] if len(years) == 1 else f'{years[0]}–{years[-1]}'}</strong></div><div class="metric"><span>{bi('Browser view', '浏览器视图')}</span><strong>{bi('Combined tracks' if len(records) > 1 else 'Single track', '多 track' if len(records) > 1 else '单 track')}</strong></div></section>
-  <section class="panel assembly-summary"><div><h2>{bi('Datasets on this genome', '该基因组上的数据集')}</h2><p>{bi('Sources with the exact same assembly accession are shown together. They remain independent tracks and are not collapsed into a consensus.', '参考组装 accession 完全相同的来源在此集中展示；各来源仍保留为独立 track，不合并成共识结果。')}</p></div>{browser_actions}</section>{pilot_note}{browser_guide}
+  <section class="panel assembly-summary"><div><h2>{bi('Datasets on this genome', '该基因组上的数据集')}</h2><p>{bi('Sources with the exact same assembly accession are shown together. They remain independent tracks and are not collapsed into a consensus.', '参考组装 accession 完全相同的来源在此集中展示；各来源仍保留为独立 track，不合并成共识结果。')}</p></div>{browser_actions}</section>{pilot_note}{browser_guide}{evidence_preview}
   <section class="panel"><div class="table-wrap"><table class="source-table"><thead><tr><th>Track / Source</th><th>{bi('Year / paper', '年份 / 文献')}</th><th>Raw data accessions</th><th>{bi('Assay', '方法')}</th><th>{bi('Evidence', '证据')}</th><th>{bi('Records', '记录数')}</th></tr></thead><tbody>{''.join(track_rows)}</tbody></table></div></section>
   <section class="panel"><h2>{bi('Download this genome', '下载该基因组数据')}</h2><div class="download-grid compact-downloads">{bed}<a class="download-card" href="{assembly_download_url(assembly, 'metadata.json', '../')}"><strong>{bi('Metadata', '元数据')}</strong><code>metadata.json</code></a></div></section>
 </main>"""
@@ -349,9 +394,18 @@ def build_assemblies_json(grouped: dict[str, list[dict[str, object]]]) -> dict[s
                 "publication_year": record["year"],
                 "pmid": source["pmid"],
                 "publication_url": str(manifest.get("pubmed_url", "")),
+                "doi": source.get("doi", ""),
+                "doi_url": str(manifest.get("doi_url", "")),
+                "pmc": source.get("pmc", ""),
+                "pmc_url": str(manifest.get("pmc_url", "")),
                 "assay": source["assay_family"],
                 "raw_data_accession": str(source["raw_data_accessions"]),
                 "raw_data_url": str(manifest.get("raw_data_url", "")),
+                "bed_url": (
+                    f"{BTED_PREVIEW_ORIGIN}/api/assets/"
+                    f"{quote(f'v0.2.0--source-{record['source_id']}--endpoints-bed', safe='')}"
+                    if record["release_status"] != "audit_only" else None
+                ),
                 "evidence_class": record["evidence_class"],
                 "record_count": record["record_count"],
                 "record_url": f"records/{record['source_id']}.html",

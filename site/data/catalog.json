@@ -410,7 +410,7 @@
         "curated_record"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_001.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000005845.1/jbrowse-config?source_id=BATTER_S1_001",
       "page_url": "assemblies/GCF_000005845.1.html"
     },
     {
@@ -460,7 +460,7 @@
         "curated_record"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_003.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000009045.1/jbrowse-config?source_id=BATTER_S1_003",
       "page_url": "assemblies/GCF_000009045.1.html"
     },
     {
@@ -485,7 +485,7 @@
         "curated_record"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_004.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000022005.1/jbrowse-config?source_id=BATTER_S1_004",
       "page_url": "assemblies/GCF_000022005.1.html"
     },
     {
@@ -510,7 +510,7 @@
         "curated_record"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_005.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_001456255.1/jbrowse-config?source_id=BATTER_S1_005",
       "page_url": "assemblies/GCF_001456255.1.html"
     },
     {
@@ -535,7 +535,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_006.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000006885.1/jbrowse-config?source_id=BATTER_S1_006",
       "page_url": "assemblies/GCF_000006885.1.html"
     },
     {
@@ -562,7 +562,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "assemblies/GCF_000739105.1.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000739105.1/jbrowse-config",
       "page_url": "assemblies/GCF_000739105.1.html"
     },
     {
@@ -587,7 +587,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_008.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000006765.1/jbrowse-config?source_id=BATTER_S1_008",
       "page_url": "assemblies/GCF_000006765.1.html"
     },
     {
@@ -612,7 +612,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_009.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_003054575.1/jbrowse-config?source_id=BATTER_S1_009",
       "page_url": "assemblies/GCF_003054575.1.html"
     },
     {
@@ -637,7 +637,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_010.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000009765.2/jbrowse-config?source_id=BATTER_S1_010",
       "page_url": "assemblies/GCF_000009765.2.html"
     },
     {
@@ -662,7 +662,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_011.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000010605.1/jbrowse-config?source_id=BATTER_S1_011",
       "page_url": "assemblies/GCF_000010605.1.html"
     },
     {
@@ -687,7 +687,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_012.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000203835.1/jbrowse-config?source_id=BATTER_S1_012",
       "page_url": "assemblies/GCF_000203835.1.html"
     },
     {
@@ -712,7 +712,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_014.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_003932715.1/jbrowse-config?source_id=BATTER_S1_014",
       "page_url": "assemblies/GCF_003932715.1.html"
     },
     {
@@ -739,7 +739,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "assemblies/GCF_005519465.1.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_005519465.1/jbrowse-config",
       "page_url": "assemblies/GCF_005519465.1.html"
     },
     {
@@ -764,7 +764,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_016.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_015710995.1/jbrowse-config?source_id=BATTER_S1_016",
       "page_url": "assemblies/GCF_015710995.1.html"
     },
     {
@@ -789,7 +789,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_018.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_018282115.1/jbrowse-config?source_id=BATTER_S1_018",
       "page_url": "assemblies/GCF_018282115.1.html"
     },
     {
@@ -814,7 +814,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_019.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000009725.1/jbrowse-config?source_id=BATTER_S1_019",
       "page_url": "assemblies/GCF_000009725.1.html"
     },
     {
@@ -839,7 +839,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_020.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000147055.1/jbrowse-config?source_id=BATTER_S1_020",
       "page_url": "assemblies/GCF_000147055.1.html"
     },
     {
@@ -864,7 +864,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_021.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000008685.2/jbrowse-config?source_id=BATTER_S1_021",
       "page_url": "assemblies/GCF_000008685.2.html"
     },
     {
@@ -889,7 +889,7 @@
         "author_called_endpoint"
       ],
       "status": "published",
-      "browser_config": "BATTER_S1_022.config.json",
+      "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000195955.2/jbrowse-config?source_id=BATTER_S1_022",
       "page_url": "assemblies/GCF_000195955.2.html"
     }
   ]
