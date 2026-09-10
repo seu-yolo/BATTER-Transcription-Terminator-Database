@@ -59,8 +59,8 @@ table.data .num-col { text-align: right; font-variant-numeric: tabular-nums; }
 <div class="aug-header">
 <h1>BATTER data augmentation</h1>
 <p>This page presents the <strong>BATTER augmentation dataset</strong> (C-layer evidence) derived from the BATTER paper (Xu et al., 2026).</p>
-<p>The augmentation pipeline starts with experimentally validated Term-seq 3&prime; ends, clusters them by sequence identity (cd-hit, 40%), searches 42,905 bacterial genomes (GEMs catalog) for homologs via hmmsearch(Pfam), and predicts stem-loop structures with CMfinder.</p>
-<p><span class="badge badge-aug">~2.4M stem-loop instances</span> <span class="badge badge-warn">Prediction &mdash; not experimentally validated</span></p>
+<p>The augmentation pipeline starts with experimentally mapped Term-seq 3&prime; ends, clusters them by sequence identity (cd-hit, 40%), searches 42,905 bacterial genomes (GEMs catalog) for homologs via hmmsearch(Pfam), and predicts stem-loop structures with CMfinder.</p>
+<p><span class="badge badge-aug">~2.4M stem-loop instances</span> <span class="badge badge-warn">Prediction &mdash; computationally predicted</span></p>
 </div>
 
 <div class="summary-cards" id="summary-cards">
@@ -144,7 +144,7 @@ table.data .num-col { text-align: right; font-variant-numeric: tabular-nums; }
 </div>
 
 <p style="font-size:13px;color:#c62828;background:#ffebee;padding:12px;border-radius:4px;margin-top:24px">
-<strong>Disclaimer:</strong> The BATTER augmentation dataset (C-layer) consists of <strong>bioinformatically predicted stem-loop structures</strong> that are homologous to experimentally observed 3&prime; ends. These <strong>have not been experimentally validated</strong>. See <a href="https://doi.org/10.1186/s40168-026-02454-5">Xu et al. 2026</a> for the full methodology and validation statistics.</p>
+<strong>Disclaimer:</strong> The BATTER augmentation dataset (C-layer) consists of <strong>bioinformatically predicted stem-loop structures</strong> that are homologous to experimentally observed 3&prime; ends. These <strong>are bioinformatic predictions without experimental confirmation</strong>. See <a href="https://doi.org/10.1186/s40168-026-02454-5">Xu et al. 2026</a> for the full methodology and validation statistics.</p>
 
 </main>
 

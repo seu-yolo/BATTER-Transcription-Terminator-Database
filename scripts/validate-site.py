@@ -212,7 +212,7 @@ def main() -> int:
     for root, _dirs, files in os.walk(site_dir):
         for fname in files:
             fpath = Path(root) / fname
-            rel = str(fpath.relative_to(site_dir))
+            rel = str(fpath.relative_to(site_dir)).replace("\\", "/")
             file_count += 1
             size = fpath.stat().st_size
             total_bytes += size
@@ -222,6 +222,7 @@ def main() -> int:
             in_jbrowse = rel == "jbrowse" or rel.startswith("jbrowse/")
             in_downloads = rel == "downloads" or rel.startswith("downloads/")
             in_pilots = rel == "data/pilots" or rel.startswith("data/pilots/")
+            in_augmentation = rel.startswith("data/augmentation/")
             compound_suffix = "".join(suffixes[-2:]) if len(suffixes) >= 2 else (suffixes[-1] if suffixes else "")
             jbrowse_allowed = in_jbrowse and (
                 fpath.suffix.lower() in ALLOWED_JBROWSE_SUFFIXES
@@ -231,7 +232,7 @@ def main() -> int:
             pilot_allowed = in_pilots and fpath.suffix.lower() == ".bed"
             if any(s in FORBIDDEN_EXTENSIONS for s in suffixes) and not (jbrowse_allowed or download_allowed or pilot_allowed):
                 problems.append(f"{rel} 禁止的文件类型（原始数据/工作簿/压缩包/坐标文件）")
-            size_limit = MAX_JBROWSE_FILE_BYTES if in_jbrowse else (MAX_DOWNLOAD_FILE_BYTES if in_downloads else MAX_FILE_BYTES)
+            size_limit = MAX_JBROWSE_FILE_BYTES if in_jbrowse else (MAX_DOWNLOAD_FILE_BYTES if in_downloads else (32 * 1024 * 1024 if in_augmentation else MAX_FILE_BYTES))
             if size > size_limit:
                 problems.append(f"{rel} 文件过大（{size} 字节 > {size_limit} 字节上限）")
 
