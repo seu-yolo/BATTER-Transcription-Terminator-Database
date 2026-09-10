@@ -892,5 +892,26 @@
       "browser_config": "https://bted-catalogue-v03-preview.bted-v0-3-dynamic-service.workers.dev/api/assemblies/GCF_000195955.2/jbrowse-config?source_id=BATTER_S1_022",
       "page_url": "assemblies/GCF_000195955.2.html"
     }
-  ]
+  ],
+  "augmentation": {
+    "source": "BATTER augmentation pipeline (Xu et al., 2026)",
+    "doi": "10.1186/s40168-026-02454-5",
+    "zenodo": "10.5281/zenodo.16761763",
+    "total_otus": 42637,
+    "total_instances": 2385587,
+    "total_sequences": 2532438,
+    "gene_clusters": 115,
+    "rfam_families": 928,
+    "stem_loop_otus": 2048,
+    "rho_dependency_otus": 15748,
+    "files": {
+      "per_otu_index": "data/augmentation/per_otu_index.json",
+      "gene_clusters": "data/augmentation/gene_clusters.tsv",
+      "rfam_families": "data/augmentation/rfam_families.tsv",
+      "stem_loop_properties": "data/augmentation/stem_loop_properties.tsv",
+      "rho_dependency": "data/augmentation/rho_dependency.tsv",
+      "combined_statistics": "data/augmentation/combined-statistics.txt"
+    },
+    "page_url": "bted-augmentation.html"
+  }
 }

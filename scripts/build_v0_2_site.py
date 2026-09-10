@@ -91,6 +91,7 @@ def nav(current: str, depth: int = 0, bilingual: bool = False) -> str:
         ("index", "index.html", "Home", "首页"),
         ("sources", "sources.html", "Genomes", "基因组"),
         ("catalog", "catalog.html", "Download", "下载"),
+        ("bted-augmentation", "bted-augmentation.html", "Augmentation", "增强"),
         ("methodology", "methodology.html", "Data notes", "数据说明"),
         ("about", "about.html", "About", "关于"),
     ]

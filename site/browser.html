@@ -24,21 +24,6 @@
     .track-option label { cursor: pointer; flex: 1; }
     .track-option input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
     .track-meta { font-size: 13px; color: var(--muted); }
-    .signal-toggle {
-      display: flex; gap: 0; margin: 16px 0;
-      background: var(--white); border: 1px solid var(--line);
-      border-radius: 6px; overflow: hidden; width: fit-content;
-    }
-    .signal-toggle button {
-      padding: 8px 20px; border: none; cursor: pointer;
-      font-size: 14px; background: transparent; color: var(--muted);
-      transition: all 0.15s;
-    }
-    .signal-toggle button.active {
-      background: var(--navy); color: var(--white); font-weight: 600;
-    }
-    .signal-toggle button:first-child { border-right: 1px solid var(--line); }
-    .signal-note { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
     .launch-bar {
       display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
       margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);
@@ -93,18 +78,6 @@
         Select the sources you want to view. Sources sharing the same assembly appear as independent tracks in JBrowse.
       </p>
       <div id="track-list"></div>
-
-      <div id="signal-toggle-area" style="display:none;">
-        <h3 style="font-size:15px; margin:16px 0 8px;">Signal display</h3>
-        <div class="signal-toggle" id="signal-toggle-buttons">
-          <button type="button" data-mode="linear" class="active">Linear (raw)</button>
-          <button type="button" data-mode="log">Log display</button>
-        </div>
-        <p class="signal-note" id="signal-note">
-          Linear shows original signal values. Log compresses the dynamic range so weaker signals are also visible.
-          This is a display-only transformation — raw BigWig files remain unchanged.
-        </p>
-      </div>
     </section>
 
     <section class="browser-toolbar" id="launch-section">
@@ -238,7 +211,6 @@
 
   var species = sources[0].species;
   var hasCombined = COMBINED_CONFIGS[assemblyAccession] !== undefined;
-  var anySignal = sources.some(function (s) { return s.has_signal; });
 
   // ── Breadcrumb ──────────────────────────────────────────────────────────
   qs('#breadcrumb-assembly').textContent = ' / ' + species + ' (' + assemblyAccession + ')';
@@ -269,18 +241,6 @@
     trackListEl.appendChild(div);
   });
 
-  // ── Signal toggle ──────────────────────────────────────────────────────
-  if (anySignal) {
-    qs('#signal-toggle-area').style.display = 'block';
-  }
-
-  qsa('#signal-toggle-buttons button').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      qsa('#signal-toggle-buttons button').forEach(function (b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-    });
-  });
-
   // ── Launch button ────────────────────────────────────────────────────
   function updateLaunch() {
     var checkedSources = [];
@@ -299,25 +259,20 @@
     }
 
     launchBtn.classList.remove('disabled');
-    var activeBtn = qs('#signal-toggle-buttons .active');
-    var signalMode = activeBtn ? activeBtn.dataset.mode : 'linear';
 
     if (hasCombined && checkedSources.length > 1) {
       var combined = COMBINED_CONFIGS[assemblyAccession];
-      launchBtn.href = 'jbrowse/index.html?config=' + encodeURIComponent(combined.config) + '&display_mode=' + signalMode;
-      launchInfo.textContent = combined.sources.length + ' source tracks combined in one view · signal: ' + signalMode;
+      launchBtn.href = 'jbrowse/index.html?config=' + encodeURIComponent(combined.config);
+      launchInfo.textContent = combined.sources.length + ' source tracks combined in one view';
     } else {
       var primarySource = checkedSources[0];
-      launchBtn.href = 'jbrowse/index.html?config=' + encodeURIComponent(primarySource + '.config.json') + '&display_mode=' + signalMode;
-      launchInfo.textContent = '1 source track · signal: ' + signalMode;
+      launchBtn.href = 'jbrowse/index.html?config=' + encodeURIComponent(primarySource + '.config.json');
+      launchInfo.textContent = '1 source track';
     }
   }
 
   qsa('#track-list input[type="checkbox"]').forEach(function (cb) {
     cb.addEventListener('change', updateLaunch);
-  });
-  qsa('#signal-toggle-buttons button').forEach(function (btn) {
-    btn.addEventListener('click', updateLaunch);
   });
 
   updateLaunch();

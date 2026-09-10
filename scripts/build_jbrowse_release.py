@@ -376,16 +376,18 @@ def compact_lalanne_tracks(
         source_id, prefix, settings, input_root, package_root, fai_path
     )
 
-    signal_track = {
+    signal_tracks: list[dict[str, Any]] = []
+
+    # Track A: log display (signed-log10 transformed BigWigs) — kept as secondary, off by default
+    log_signal_track = {
         "type": "MultiQuantitativeTrack",
-        "trackId": f"{prefix}_strand_aware_3prime_signal",
-        "name": "Signal · blue + above zero · orange − below zero",
+        "trackId": f"{prefix}_strand_aware_3prime_signal_log",
+        "name": "Signal · log display",
         "description": (
-            "Paired strand-specific Rend-seq signal from one experiment. "
-            "Blue values above zero denote the + strand; orange values below zero denote "
-            "the − strand. Display values are sign × log10(1 + raw signal). Negative values "
-            "encode strand only, not negative experimental abundance. Raw untransformed "
-            "strand tracks remain available in Full evidence view."
+            "Paired strand-specific signal, displayed as sign × log10(1 + raw value) "
+            "to compress dynamic range. Blue values above zero denote the + strand; "
+            "orange values below zero denote the − strand. Raw untransformed strand tracks "
+            "remain available in Full evidence view."
         ),
         "adapter": {
             "type": "MultiWiggleAdapter",
@@ -400,7 +402,7 @@ def compact_lalanne_tracks(
         },
         "displays": [{
             "type": "MultiLinearWiggleDisplay",
-            "displayId": f"{prefix}_strand_aware_3prime_signal-MultiLinearWiggleDisplay",
+            "displayId": f"{prefix}_strand_aware_3prime_signal_log-MultiLinearWiggleDisplay",
             "defaultRendering": "xyplot",
             "height": 170,
             "showSidebar": True,
@@ -411,9 +413,47 @@ def compact_lalanne_tracks(
             "evidence_class": "observed_signal",
             "strand_encoding": "+ strand blue; - strand orange",
             "display_transform": "sign(strand) * log10(1 + raw_signal)",
-            "scale_note": "Paired series share one zero-centred display; raw tracks are retained separately.",
+            "scale_note": "Pired series share one zero-centred display; raw tracks are retained separately.",
+            "default_off": True,
         },
     }
+    signal_tracks.append(log_signal_track)
+
+    # Track B: linear (raw) display — references the untransformedBigWigs, on by default
+    linear_signal_track = {
+        "type": "MultiQuantitativeTrack",
+        "trackId": f"{prefix}_strand_aware_3prime_signal_raw",
+        "name": "Signal · linear (raw)",
+        "description": (
+            "Paired strand-specific signal from one experiment, displayed as raw values (1:1). "
+            "Blue values above zero denote the + strand; orange values below zero denote "
+            "the − strand. Negative values encode strand only, not negative experimental abundance."
+        ),
+        "adapter": {
+            "type": "MultiWiggleAdapter",
+            "subadapters": [
+                adapter_with_strand_style(forward_signal, "+"),  # No URI replacement → raw BigWig
+                adapter_with_strand_style(reverse_signal, "-"),
+            ],
+        },
+        "displays": [{
+            "type": "MultiLinearWiggleDisplay",
+            "displayId": f"{prefix}_strand_aware_3prime_signal_raw-MultiLinearWiggleDisplay",
+            "defaultRendering": "xyplot",
+            "height": 170,
+            "showSidebar": True,
+        }],
+        "category": ["BTED compact view", "Observed signal"],
+        "assemblyNames": assembly_names,
+        "metadata": {
+            "evidence_class": "observed_signal",
+            "strand_encoding": "+ strand blue; - strand orange",
+            "display_transform": "raw (1:1)",
+            "scale_note": "Paired series share one zero-centred display; log-transformed display track is available separately.",
+            "default_off": False,  # explicitly on by default
+        },
+    }
+    signal_tracks.append(linear_signal_track)
 
     combined_gff3 = combined_endpoint_gff3(
         source_id, prefix, settings, input_root, package_root
@@ -465,7 +505,7 @@ def compact_lalanne_tracks(
         evidence = copy.deepcopy(original)
         evidence["category"] = ["Full evidence view", *(evidence.get("category") or [])]
         evidence_tracks.append(evidence)
-    return [*reference_tracks, signal_track, endpoint_track, *evidence_tracks], [
+    return [*reference_tracks, *signal_tracks, endpoint_track, *evidence_tracks], [
         combined_gff3.name,
         forward_display_bw.name,
         reverse_display_bw.name,
@@ -598,7 +638,8 @@ def default_linear_session(
     session_tracks = []
     default_tracks = [
         track for track in tracks
-        if is_reference_annotation(track) or "BTED compact view" in track.get("category", [])
+        if (is_reference_annotation(track) or "BTED compact view" in track.get("category", []))
+        and not track.get("metadata", {}).get("default_off")
     ]
     if len(default_tracks) == 1:
         default_tracks = tracks
