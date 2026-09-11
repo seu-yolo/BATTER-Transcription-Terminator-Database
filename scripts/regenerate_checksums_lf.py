@@ -24,6 +24,13 @@ def git_read_text(git_path):
     except subprocess.CalledProcessError:
         return (REPO / git_path).read_text(encoding="utf-8")
 
+def sha256_of_file(path):
+    """Compute SHA-256 of a file on disk, normalizing CRLF to LF."""
+    content = path.read_bytes()
+    content = content.replace(b"\r\n", b"\n")
+    return hashlib.sha256(content).hexdigest()
+
+
 # ── 1. Regenerate per-source SHA256SUMS.txt ──────────────────────────
 source_dirs = sorted([d for d in (RELEASE / "records").iterdir() if d.is_dir() and d.name.startswith("BATTER_S1_")])
 updated_sums = 0
@@ -65,7 +72,7 @@ for sid, src in manifest["sources"].items():
 
 # Release-root checksum
 if "release_root_checksum" in manifest:
-    actual = git_obj_sha256("data/public/v0.2.0/SHA256SUMS.txt")
+    actual = sha256_of_file(RELEASE / "SHA256SUMS.txt")
     if actual != manifest["release_root_checksum"]:
         print(f"  release-root: {manifest['release_root_checksum'][:12]} -> {actual[:12]}")
         manifest["release_root_checksum"] = actual
@@ -75,7 +82,7 @@ if updated_manifest:
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="")
 
 # ── 3. Regenerate release-root SHA256SUMS.txt ───────────────────────
-root_chk = git_obj_sha256("data/public/v0.2.0/release_manifest.json")
+root_chk = sha256_of_file(RELEASE / "release_manifest.json")
 root_content = root_chk + "  release_manifest.json\n"
 root_path = RELEASE / "SHA256SUMS.txt"
 if root_path.read_text(encoding="utf-8") != root_content:
