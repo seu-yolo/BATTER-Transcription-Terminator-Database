@@ -20,14 +20,13 @@ class TestBtedBrowserWrapper(unittest.TestCase):
         cls.assemblies = json.loads((SITE_ROOT / "data/assemblies.json").read_text(encoding="utf-8"))
 
     def test_wrapper_is_outside_unmodified_jbrowse_bundle(self) -> None:
-        self.assertIn('data-browser-frame', self.wrapper)
-        self.assertIn('src="assets/browser-wrapper.js', self.wrapper)
-        self.assertIn('title="BTED interactive genome browser"', self.wrapper)
-        self.assertIn('jbrowse/index.html?', self.script)
-        self.assertIn('data-browser-studies', self.wrapper)
-        self.assertIn('config', self.script)
-        self.assertIn('loc', self.script)
-        self.assertIn('session', self.script)
+        # Current browser.html is a standalone inline page (no iframe / external JS)
+        self.assertIn('id="browser-app"', self.wrapper)
+        self.assertIn('id="launch-btn"', self.wrapper)
+        self.assertIn("jbrowse/index.html?config=", self.wrapper)
+        self.assertIn('SOURCES_BY_ASSEMBLY', self.wrapper)
+        self.assertIn('COMBINED_CONFIGS', self.wrapper)
+        self.assertIn("?assembly=", self.wrapper)
 
     def test_wrapper_exposes_source_links_and_source_switch(self) -> None:
         for token in (
@@ -68,10 +67,10 @@ class TestBtedBrowserWrapper(unittest.TestCase):
 
     def test_generated_public_links_use_wrapper_and_audit_source_stays_out(self) -> None:
         html_pages = list((SITE_ROOT / "records").glob("BATTER_S1_*.html")) + list((SITE_ROOT / "assemblies").glob("GCF_*.html"))
-        wrapper_links = sum("browser.html?config=" in page.read_text(encoding="utf-8") for page in html_pages)
+        wrapper_links = sum("browser.html?assembly=" in page.read_text(encoding="utf-8") for page in html_pages)
         self.assertEqual(wrapper_links, 40)  # 21 source pages + 19 published assembly pages
         audit_page = (SITE_ROOT / "records/BATTER_S1_002.html").read_text(encoding="utf-8")
-        self.assertNotIn("browser.html?config=", audit_page)
+        self.assertNotIn("browser.html?assembly=", audit_page)
         self.assertNotIn("BATTER_S1_002--endpoints-bed", self.script)
 
     def test_accession_search_uses_wrapper(self) -> None:
