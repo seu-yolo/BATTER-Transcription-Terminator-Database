@@ -2,6 +2,8 @@
 
 BTED 将公开的细菌转录 3′ end 实验整理为可追溯、可下载、可在 JBrowse 中核对的标准数据。
 
+🌐 **网站**: [seu-yolo.github.io/BATTER-Transcription-Terminator-Database](https://seu-yolo.github.io/BATTER-Transcription-Terminator-Database/)
+
 本仓库保存数据标准、来源注册表、小型发布表、处理记录、构建脚本和网站源文件。原始 FASTQ/BAM/WIG、出版商工作簿与大型浏览器资产不进入 Git；它们通过公共 accession 或版本化 GitHub Release 提供。
 
 ## BTED v0.2.0
