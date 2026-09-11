@@ -54,15 +54,28 @@
             ]
           },
           {
-            "id": "bted_track_2",
+            "id": "bted_track_2_log",
             "type": "MultiQuantitativeTrack",
-            "configuration": "bsub_strand_aware_3prime_signal",
+            "configuration": "bsub_strand_aware_3prime_signal_log",
+            "minimized": true,
+            "displays": [
+              {
+                "id": "bted_display_2_log",
+                "type": "MultiLinearWiggleDisplay",
+                "configuration": "bsub_strand_aware_3prime_signal_log-MultiLinearWiggleDisplay"
+              }
+            ]
+          },
+          {
+            "id": "bted_track_2_raw",
+            "type": "MultiQuantitativeTrack",
+            "configuration": "bsub_strand_aware_3prime_signal_raw",
             "minimized": false,
             "displays": [
               {
-                "id": "bted_display_2",
+                "id": "bted_display_2_raw",
                 "type": "MultiLinearWiggleDisplay",
-                "configuration": "bsub_strand_aware_3prime_signal-MultiLinearWiggleDisplay"
+                "configuration": "bsub_strand_aware_3prime_signal_raw-MultiLinearWiggleDisplay"
               }
             ]
           },
@@ -111,9 +124,9 @@
     },
     {
       "type": "MultiQuantitativeTrack",
-      "trackId": "bsub_strand_aware_3prime_signal",
-      "name": "Signal · blue + above zero · orange − below zero",
-      "description": "Paired strand-specific Rend-seq signal from one experiment. Blue values above zero denote the + strand; orange values below zero denote the − strand. Display values are sign × log10(1 + raw signal). Negative values encode strand only, not negative experimental abundance. Raw untransformed strand tracks remain available in Full evidence view.",
+      "trackId": "bsub_strand_aware_3prime_signal_log",
+      "name": "Signal · log display",
+      "description": "Paired strand-specific signal, displayed as sign × log10(1 + raw value) to compress dynamic range. Blue values above zero denote the + strand; orange values below zero denote the − strand. Raw untransformed strand tracks remain available in Full evidence view.",
       "adapter": {
         "type": "MultiWiggleAdapter",
         "subadapters": [
@@ -142,7 +155,7 @@
       "displays": [
         {
           "type": "MultiLinearWiggleDisplay",
-          "displayId": "bsub_strand_aware_3prime_signal-MultiLinearWiggleDisplay",
+          "displayId": "bsub_strand_aware_3prime_signal_log-MultiLinearWiggleDisplay",
           "defaultRendering": "xyplot",
           "height": 170,
           "showSidebar": true
@@ -159,7 +172,62 @@
         "evidence_class": "observed_signal",
         "strand_encoding": "+ strand blue; - strand orange",
         "display_transform": "sign(strand) * log10(1 + raw_signal)",
-        "scale_note": "Paired series share one zero-centred display; raw tracks are retained separately."
+        "scale_note": "Paired series share one zero-centred display; raw tracks are retained separately.",
+        "default_off": true
+      }
+    },
+    {
+      "type": "MultiQuantitativeTrack",
+      "trackId": "bsub_strand_aware_3prime_signal_raw",
+      "name": "Signal · linear (raw)",
+      "description": "Paired strand-specific signal from one experiment, displayed as raw values (1:1). Blue values above zero denote the + strand; orange values below zero denote the − strand. Negative values encode strand only, not negative experimental abundance.",
+      "adapter": {
+        "type": "MultiWiggleAdapter",
+        "subadapters": [
+          {
+            "type": "BigWigAdapter",
+            "bigWigLocation": {
+              "uri": "assets/BATTER_S1_003__bsub_experimental_3prime_signal.forward.bw",
+              "locationType": "UriLocation"
+            },
+            "name": "+ strand",
+            "source": "+",
+            "color": "#2563A6"
+          },
+          {
+            "type": "BigWigAdapter",
+            "bigWigLocation": {
+              "uri": "assets/BATTER_S1_003__bsub_experimental_3prime_signal.reverse.bw",
+              "locationType": "UriLocation"
+            },
+            "name": "− strand",
+            "source": "-",
+            "color": "#D2691E"
+          }
+        ]
+      },
+      "displays": [
+        {
+          "type": "MultiLinearWiggleDisplay",
+          "displayId": "bsub_strand_aware_3prime_signal_raw-MultiLinearWiggleDisplay",
+          "defaultRendering": "xyplot",
+          "height": 170,
+          "showSidebar": true
+        }
+      ],
+      "category": [
+        "BTED compact view",
+        "Observed signal"
+      ],
+      "assemblyNames": [
+        "bsub_168_NC_000964_3"
+      ],
+      "metadata": {
+        "evidence_class": "observed_signal",
+        "strand_encoding": "+ strand blue; - strand orange",
+        "display_transform": "raw (1:1)",
+        "scale_note": "Paired series share one zero-centred display; raw tracks are retained separately.",
+        "default_off": false
       }
     },
     {
