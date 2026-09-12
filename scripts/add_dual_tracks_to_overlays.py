@@ -17,6 +17,16 @@ from pathlib import Path
 OVERLAY_DIR = Path(__file__).resolve().parent.parent / "data/public/v0.2.0/jbrowse-config-overlays"
 SOURCES = ["BATTER_S1_001", "BATTER_S1_003", "BATTER_S1_004", "BATTER_S1_005"]
 
+# The log BigWigs use a species prefix (ecoli_, bsub_, ccre_, vnat_) for
+# all 4 sources, but the raw BigWigs for S1_001 omit this prefix.
+# We need a mapping to derive the correct raw filename for each source.
+RAW_BW_PREFIX = {
+    "BATTER_S1_001": "experimental_3prime_signal",
+    "BATTER_S1_003": "bsub_experimental_3prime_signal",
+    "BATTER_S1_004": "ccre_experimental_3prime_signal",
+    "BATTER_S1_005": "vnat_experimental_3prime_signal",
+}
+
 
 def rewrite_config(source_id: str) -> None:
     config_path = OVERLAY_DIR / f"{source_id}.config.json"
@@ -71,11 +81,13 @@ def rewrite_config(source_id: str) -> None:
         if old_id.endswith(f"{prefix}_log-MultiLinearWiggleDisplay"):
             disp["displayId"] = f"{prefix}_raw-MultiLinearWiggleDisplay"
 
-    # Point subadapter URIs to raw .bw (strip signed-log10-ui-v4 suffix)
-    for sa in raw_track["adapter"]["subadapters"]:
-        uri = sa["bigWigLocation"]["uri"]
-        new_uri = uri.replace(".signed-log10-ui-v4.bw", ".bw")
-        sa["bigWigLocation"]["uri"] = new_uri
+    # Point subadapter URIs to raw .bw.  The raw files in the release bundle
+    # use the RAW_BW_PREFIX naming (no ecoli_ prefix for S1_001), while the
+    # log files use a prefix derived from the trackId.  Build URIs directly.
+    raw_prefix = RAW_BW_PREFIX[source_id]
+    for i, sa in enumerate(raw_track["adapter"]["subadapters"]):
+        strand = "forward" if sa.get("source") == "+" else "reverse"
+        sa["bigWigLocation"]["uri"] = f"assets/{source_id}__{raw_prefix}.{strand}.bw"
 
     raw_track["metadata"]["display_transform"] = "raw (1:1)"
     raw_track["metadata"]["default_off"] = False

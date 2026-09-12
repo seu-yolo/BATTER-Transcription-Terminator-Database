@@ -187,7 +187,7 @@
           {
             "type": "BigWigAdapter",
             "bigWigLocation": {
-              "uri": "assets/BATTER_S1_001__ecoli_experimental_3prime_signal.forward.bw",
+              "uri": "assets/BATTER_S1_001__experimental_3prime_signal.forward.bw",
               "locationType": "UriLocation"
             },
             "name": "+ strand",
@@ -197,7 +197,7 @@
           {
             "type": "BigWigAdapter",
             "bigWigLocation": {
-              "uri": "assets/BATTER_S1_001__ecoli_experimental_3prime_signal.reverse.bw",
+              "uri": "assets/BATTER_S1_001__experimental_3prime_signal.reverse.bw",
               "locationType": "UriLocation"
             },
             "name": "− strand",
