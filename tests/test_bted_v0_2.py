@@ -230,36 +230,51 @@ class TestBtedV020Release(unittest.TestCase):
         for source_id in ("BATTER_S1_001", "BATTER_S1_003", "BATTER_S1_004", "BATTER_S1_005"):
             config = json.loads((root / f"{source_id}.config.json").read_text(encoding="utf-8"))
             tracks = config["tracks"]
+            # Now 4 compact tracks: gene-annotation, log-signal, raw-signal, geneproximal-combined
             self.assertEqual(
-                [track["type"] for track in tracks[:3]],
-                ["FeatureTrack", "MultiQuantitativeTrack", "FeatureTrack"],
+                [track["type"] for track in tracks[:4]],
+                ["FeatureTrack", "MultiQuantitativeTrack", "MultiQuantitativeTrack", "FeatureTrack"],
                 source_id,
             )
-            self.assertIn("blue + above zero", tracks[1]["name"])
-            self.assertIn("orange − below zero", tracks[1]["name"])
-            self.assertIn("blue → + strand", tracks[2]["name"])
-            self.assertIn("orange ← − strand", tracks[2]["name"])
-            self.assertEqual(
-                [adapter["source"] for adapter in tracks[1]["adapter"]["subadapters"]],
-                ["+", "-"],
-            )
+            # Track[1] = log signal
+            self.assertIn("Signal · log display", tracks[1]["name"])
             self.assertTrue(all(
                 adapter["bigWigLocation"]["uri"].endswith("signed-log10-ui-v4.bw")
                 for adapter in tracks[1]["adapter"]["subadapters"]
             ))
-            self.assertEqual(tracks[2]["adapter"]["type"], "Gff3Adapter")
-            self.assertTrue(tracks[2]["adapter"]["gffLocation"]["uri"].endswith(".gff3"))
-            self.assertIn("raw 3-prime-end signal support", tracks[2]["metadata"]["score_interpretation"])
             self.assertEqual(
                 tracks[1]["metadata"]["display_transform"],
                 "sign(strand) * log10(1 + raw_signal)",
             )
+            self.assertEqual(
+                [adapter["source"] for adapter in tracks[1]["adapter"]["subadapters"]],
+                ["+", "-"],
+            )
+            # Track[2] = raw signal
+            self.assertIn("Signal · linear (raw)", tracks[2]["name"])
+            self.assertTrue(all(
+                adapter["bigWigLocation"]["uri"].endswith(".bw")
+                and not adapter["bigWigLocation"]["uri"].endswith("signed-log10-ui-v4.bw")
+                for adapter in tracks[2]["adapter"]["subadapters"]
+            ))
+            self.assertEqual(
+                tracks[2]["metadata"]["display_transform"],
+                "raw (1:1)",
+            )
+            # Track[3] = geneproximal combined
+            self.assertIn("blue → + strand", tracks[3]["name"])
+            self.assertIn("orange ← − strand", tracks[3]["name"])
+            self.assertEqual(tracks[3]["adapter"]["type"], "Gff3Adapter")
+            self.assertTrue(tracks[3]["adapter"]["gffLocation"]["uri"].endswith(".gff3"))
+            self.assertIn("raw 3-prime-end signal support", tracks[3]["metadata"]["score_interpretation"])
+            # Default session tracks match the first 4 compact tracks
             default_ids = [
                 track["configuration"]
                 for track in config["defaultSession"]["views"][0]["tracks"]
             ]
-            self.assertEqual(default_ids, [track["trackId"] for track in tracks[:3]], source_id)
-            self.assertTrue(all("Full evidence view" in track["category"] for track in tracks[3:]))
+            self.assertEqual(default_ids, [track["trackId"] for track in tracks[:4]], source_id)
+            # Remaining tracks (5+) belong to "Full evidence view"
+            self.assertTrue(all("Full evidence view" in track["category"] for track in tracks[4:]))
 
         s1_003_page = (REPO_ROOT / "site/records/BATTER_S1_003.html").read_text(encoding="utf-8")
         self.assertIn("Compare raw signal with reported endpoints", s1_003_page)
