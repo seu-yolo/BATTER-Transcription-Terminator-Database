@@ -19,7 +19,7 @@ EXPECTED_ASSEMBLIES = {
     "GCF_000739105.1": ["BATTER_S1_007", "BATTER_S1_013"],
     "GCF_005519465.1": ["BATTER_S1_015", "BATTER_S1_017"],
 }
-COMPACT_LALANNE_TRACK_TYPES = ["FeatureTrack", "MultiQuantitativeTrack", "FeatureTrack"]
+COMPACT_LALANNE_TRACK_TYPES = ["FeatureTrack", "MultiQuantitativeTrack", "MultiQuantitativeTrack", "FeatureTrack"]
 
 
 def digest(path: Path) -> str:
@@ -110,35 +110,57 @@ def main() -> int:
         else:
             default_track_ids = [track.get("configuration") for track in views[0].get("tracks", [])]
             if source_id in LALANNE:
-                if len(default_track_ids) != 3 or default_track_ids != track_ids[:3]:
-                    problems.append(f"{source_id}: compact default view must open genes, paired signal and combined endpoints")
-                if [track.get("type") for track in config.get("tracks", [])[:3]] != COMPACT_LALANNE_TRACK_TYPES:
-                    problems.append(f"{source_id}: compact track order/types are invalid")
-                compact_signal = config["tracks"][1]
-                if "blue + above zero" not in compact_signal.get("name", "") or "orange − below zero" not in compact_signal.get("name", ""):
-                    problems.append(f"{source_id}: paired signal title lacks an explicit strand legend")
-                subadapters = compact_signal.get("adapter", {}).get("subadapters", [])
-                if [adapter.get("source") for adapter in subadapters] != ["+", "-"]:
-                    problems.append(f"{source_id}: paired signal lacks explicit + / - source order")
-                display_signal_uris = [uri for uri in uris(compact_signal) if uri.endswith(".bw")]
-                if len(display_signal_uris) != 2 or any("signed-log10-ui-v4" not in uri for uri in display_signal_uris):
-                    problems.append(f"{source_id}: paired signal does not use the two display-only BigWigs")
-                for uri in display_signal_uris:
+                if len(default_track_ids) != 4 or default_track_ids != track_ids[:4]:
+                    problems.append(f"{source_id}: compact default view must open genes, log-signal, raw-signal and combined endpoints")
+                if [track.get("type") for track in config.get("tracks", [])[:4]] != COMPACT_LALANNE_TRACK_TYPES:
+                    problems.append(f"{source_id}: compact track order/types are invalid; expected FeatureTrack, MultiQuantitativeTrack, MultiQuantitativeTrack, FeatureTrack")
+
+                # Track[1] = log signal
+                log_signal = config["tracks"][1]
+                if "Signal · log display" not in log_signal.get("name", ""):
+                    problems.append(f"{source_id}: log signal title is wrong")
+                log_subadapters = log_signal.get("adapter", {}).get("subadapters", [])
+                if [adapter.get("source") for adapter in log_subadapters] != ["+", "-"]:
+                    problems.append(f"{source_id}: log signal lacks explicit + / - source order")
+                log_signal_uris = [uri for uri in uris(log_signal) if uri.endswith(".bw")]
+                if len(log_signal_uris) != 2 or any("signed-log10-ui-v4" not in uri for uri in log_signal_uris):
+                    problems.append(f"{source_id}: log signal does not use the two display-only BigWigs")
+                for uri in log_signal_uris:
                     path = root / uri
                     if not path.is_file() or path.stat().st_size < 64:
-                        problems.append(f"{source_id}: missing or empty display signal {uri}")
+                        problems.append(f"{source_id}: missing or empty log signal {uri}")
                         continue
                     with path.open("rb") as handle:
                         header = handle.read(64)
                     if len(header) != 64:
-                        problems.append(f"{source_id}: truncated display BigWig header: {uri}")
+                        problems.append(f"{source_id}: truncated log BigWig header: {uri}")
                         continue
                     magic, version, _zoom_levels, *_offsets, uncompress_buf_size, _reserved = struct.unpack(
                         "<IHHQQQHHQQIQ", header
                     )
                     if magic != 0x888FFC26 or version != 4 or uncompress_buf_size != 0:
-                        problems.append(f"{source_id}: display BigWig is not the expected uncompressed v4 file: {uri}")
-                compact_endpoints = config["tracks"][2]
+                        problems.append(f"{source_id}: log BigWig is not the expected uncompressed v4 file: {uri}")
+
+                # Track[2] = raw signal
+                raw_signal = config["tracks"][2]
+                if "Signal · linear (raw)" not in raw_signal.get("name", ""):
+                    problems.append(f"{source_id}: raw signal title is wrong")
+                raw_signal_uris = [uri for uri in uris(raw_signal) if uri.endswith(".bw")]
+                if len(raw_signal_uris) != 2 or any("signed-log10-ui-v4" in uri for uri in raw_signal_uris):
+                    problems.append(f"{source_id}: raw signal must use plain .bw without signed-log10-ui-v4 suffix")
+                for uri in raw_signal_uris:
+                    path = root / uri
+                    if not path.is_file() or path.stat().st_size < 64:
+                        problems.append(f"{source_id}: missing or empty raw signal {uri}")
+                        continue
+                    with path.open("rb") as handle:
+                        header = handle.read(64)
+                    if len(header) != 64:
+                        problems.append(f"{source_id}: truncated raw BigWig header: {uri}")
+                        continue
+
+                # Track[3] = combined endpoints
+                compact_endpoints = config["tracks"][3]
                 if "blue → + strand" not in compact_endpoints.get("name", "") or "orange ← − strand" not in compact_endpoints.get("name", ""):
                     problems.append(f"{source_id}: candidate title lacks an explicit strand legend")
                 gff_uris = [uri for uri in uris(compact_endpoints) if uri.endswith(".gff3")]
