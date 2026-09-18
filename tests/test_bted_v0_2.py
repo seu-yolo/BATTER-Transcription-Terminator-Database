@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -118,21 +120,167 @@ class TestBtedV020Release(unittest.TestCase):
         self.assertEqual({row["evidence_class"] for row in s1_020}, {"author_called_endpoint"})
         self.assertTrue(all("S2D" in row["source_table_or_file"] for row in s1_020))
 
-    def test_static_catalog_has_22_records_and_21_browser_links(self) -> None:
+    def test_static_catalog_groups_22_sources_into_20_assemblies(self) -> None:
         catalog = json.loads((REPO_ROOT / "site/data/catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual(catalog["language"], "en")
         self.assertEqual(len(catalog["sources"]), 22)
+        self.assertEqual(len(catalog["assemblies"]), 20)
         self.assertEqual(sum(bool(row["has_jbrowse"]) for row in catalog["sources"]), 21)
         self.assertEqual(len(list((REPO_ROOT / "site/records").glob("BATTER_S1_*.html"))), 22)
+        self.assertEqual(len(list((REPO_ROOT / "site/assemblies").glob("GCF_*.html"))), 20)
+        assemblies = {row["assembly"]: row for row in catalog["assemblies"]}
+        self.assertTrue(all(row["evidence_classes"] for row in assemblies.values()))
         self.assertEqual(
-            sum("Open JBrowse" in path.read_text(encoding="utf-8") for path in (REPO_ROOT / "site/records").glob("*.html")),
+            assemblies["GCF_000739105.1"]["source_ids"],
+            ["BATTER_S1_007", "BATTER_S1_013"],
+        )
+        self.assertEqual(assemblies["GCF_000739105.1"]["record_count"], 2_848)
+        self.assertEqual(
+            assemblies["GCF_005519465.1"]["source_ids"],
+            ["BATTER_S1_015", "BATTER_S1_017"],
+        )
+        self.assertEqual(assemblies["GCF_005519465.1"]["record_count"], 2_567)
+        self.assertEqual(
+            sum("Open source track" in path.read_text(encoding="utf-8") for path in (REPO_ROOT / "site/records").glob("*.html")),
             21,
         )
         s1_005_page = (REPO_ROOT / "site/records/BATTER_S1_005.html").read_text(encoding="utf-8")
-        self.assertIn("../downloads/records/BATTER_S1_005/endpoints.tsv", s1_005_page)
+        self.assertIn("../downloads/records/BATTER_S1_005/endpoints.bed", s1_005_page)
+        self.assertNotIn("Coordinate convention", s1_005_page)
+        self.assertNotIn("fields.json", s1_005_page)
         self.assertNotIn("raw.githubusercontent.com", s1_005_page)
         s1_002_page = (REPO_ROOT / "site/records/BATTER_S1_002.html").read_text(encoding="utf-8")
         self.assertIn("audit_only", s1_002_page)
-        self.assertIn("no endpoint set published", s1_002_page)
+        self.assertNotIn("BATTER_S1_002/endpoints.bed", s1_002_page)
+
+        genomes_page = (REPO_ROOT / "site/sources.html").read_text(encoding="utf-8")
+        for heading in ("Genome", "Experimental data", "Evidence", "3′ ends", "Access"):
+            self.assertIn(heading, genomes_page)
+        self.assertIn("data-select-visible", genomes_page)
+        self.assertEqual(genomes_page.count("data-download-choice"), 20)
+        self.assertNotIn("Assembly / sources", genomes_page)
+        self.assertNotIn("<th>Tracks</th>", genomes_page)
+
+    def test_core_site_is_english_first_and_links_raw_accessions(self) -> None:
+        cjk = re.compile(r"[\u3400-\u9fff]")
+        for path in list((REPO_ROOT / "site").glob("*.html")) + list((REPO_ROOT / "site/records").glob("*.html")) + list((REPO_ROOT / "site/assemblies").glob("*.html")):
+            if path.name == "accession-range-demo.html":
+                continue
+            self.assertIsNone(cjk.search(path.read_text(encoding="utf-8")), str(path))
+
+        manifests = {
+            path.stem: json.loads(path.read_text(encoding="utf-8"))
+            for path in (REPO_ROOT / "data/registry/manifests").glob("BATTER_S1_*.json")
+        }
+        for source_id, manifest in manifests.items():
+            page = (REPO_ROOT / f"site/records/{source_id}.html").read_text(encoding="utf-8")
+            accessions = [item for item in re.split(r"[;,\s]+", manifest["raw_data_accessions"]) if item]
+            for accession in accessions:
+                self.assertIn(f'data-accession="{accession}"', page, f"{source_id}: {accession}")
+                self.assertIn(f"<code>{accession}</code>", page, f"{source_id}: {accession}")
+            self.assertIn("Assembly accession", page)
+
+    def test_assembly_download_packages_preserve_source_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "assemblies"
+            result = subprocess.run(
+                [sys.executable, "scripts/build_assembly_downloads.py", "--output-dir", str(output)],
+                cwd=REPO_ROOT, text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            catalog = json.loads((output / "catalog.json").read_text(encoding="utf-8"))
+            self.assertEqual(catalog["assembly_count"], 20)
+            self.assertEqual(len(list(output.glob("GCF_*/metadata.json"))), 20)
+            self.assertEqual(len(list(output.glob("GCF_*/endpoints.bed"))), 19)
+            self.assertEqual(
+                sum(entry["record_count"] for entry in catalog["assemblies"].values()),
+                28_399,
+            )
+            for assembly, expected_sources, expected_records in (
+                ("GCF_000739105.1", ["BATTER_S1_007", "BATTER_S1_013"], 2_848),
+                ("GCF_005519465.1", ["BATTER_S1_015", "BATTER_S1_017"], 2_567),
+            ):
+                metadata = json.loads((output / assembly / "metadata.json").read_text(encoding="utf-8"))
+                self.assertEqual([row["source_id"] for row in metadata["sources"]], expected_sources)
+                self.assertEqual(metadata["record_count"], expected_records)
+                bed_rows = (output / assembly / "endpoints.bed").read_text(encoding="utf-8").splitlines()
+                self.assertEqual(len(bed_rows), expected_records)
+                for source_id in expected_sources:
+                    self.assertTrue(any(source_id in row.split("\t")[3] for row in bed_rows))
+
+    def test_tracked_jbrowse_overlays_cover_sources_and_shared_assemblies(self) -> None:
+        root = RELEASE_ROOT / "jbrowse-config-overlays"
+        catalog = json.loads((root / "catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(catalog["sources"]), 21)
+        self.assertEqual(
+            set(catalog["assemblies"]),
+            {"GCF_000739105.1", "GCF_005519465.1"},
+        )
+        for source_id, entry in catalog["sources"].items():
+            config = json.loads((root / entry["config"]).read_text(encoding="utf-8"))
+            views = config.get("defaultSession", {}).get("views", [])
+            self.assertEqual(len(views), 1, source_id)
+            self.assertEqual(views[0]["type"], "LinearGenomeView", source_id)
+        for assembly, entry in catalog["assemblies"].items():
+            config = json.loads((root / entry["config"]).read_text(encoding="utf-8"))
+            self.assertEqual(len(config["defaultSession"]["views"][0]["tracks"]), 3, assembly)
+
+    def test_rendseq_sources_use_compact_strand_aware_default_views(self) -> None:
+        root = REPO_ROOT / "data/public/v0.2.0/jbrowse-config-overlays"
+        for source_id in ("BATTER_S1_001", "BATTER_S1_003", "BATTER_S1_004", "BATTER_S1_005"):
+            config = json.loads((root / f"{source_id}.config.json").read_text(encoding="utf-8"))
+            tracks = config["tracks"]
+            # Now 4 compact tracks: gene-annotation, log-signal, raw-signal, geneproximal-combined
+            self.assertEqual(
+                [track["type"] for track in tracks[:4]],
+                ["FeatureTrack", "MultiQuantitativeTrack", "MultiQuantitativeTrack", "FeatureTrack"],
+                source_id,
+            )
+            # Track[1] = log signal
+            self.assertIn("Signal · log display", tracks[1]["name"])
+            self.assertTrue(all(
+                adapter["bigWigLocation"]["uri"].endswith("signed-log10-ui-v4.bw")
+                for adapter in tracks[1]["adapter"]["subadapters"]
+            ))
+            self.assertEqual(
+                tracks[1]["metadata"]["display_transform"],
+                "sign(strand) * log10(1 + raw_signal)",
+            )
+            self.assertEqual(
+                [adapter["source"] for adapter in tracks[1]["adapter"]["subadapters"]],
+                ["+", "-"],
+            )
+            # Track[2] = raw signal
+            self.assertIn("Signal · linear (raw)", tracks[2]["name"])
+            self.assertTrue(all(
+                adapter["bigWigLocation"]["uri"].endswith(".bw")
+                and not adapter["bigWigLocation"]["uri"].endswith("signed-log10-ui-v4.bw")
+                for adapter in tracks[2]["adapter"]["subadapters"]
+            ))
+            self.assertEqual(
+                tracks[2]["metadata"]["display_transform"],
+                "raw (1:1)",
+            )
+            # Track[3] = geneproximal combined
+            self.assertIn("blue → + strand", tracks[3]["name"])
+            self.assertIn("orange ← − strand", tracks[3]["name"])
+            self.assertEqual(tracks[3]["adapter"]["type"], "Gff3Adapter")
+            self.assertTrue(tracks[3]["adapter"]["gffLocation"]["uri"].endswith(".gff3"))
+            self.assertIn("raw 3-prime-end signal support", tracks[3]["metadata"]["score_interpretation"])
+            # Default session tracks match the first 4 compact tracks
+            default_ids = [
+                track["configuration"]
+                for track in config["defaultSession"]["views"][0]["tracks"]
+            ]
+            self.assertEqual(default_ids, [track["trackId"] for track in tracks[:4]], source_id)
+            # Remaining tracks (5+) belong to "Full evidence view"
+            self.assertTrue(all("Full evidence view" in track["category"] for track in tracks[4:]))
+
+        s1_003_page = (REPO_ROOT / "site/records/BATTER_S1_003.html").read_text(encoding="utf-8")
+        self.assertIn("Compare raw signal with reported endpoints", s1_003_page)
+        self.assertIn("BTED does not normalize the displayed signal", s1_003_page)
+        self.assertIn("PubMed/DOI, raw-data accession", s1_003_page)
+        self.assertIn("Track menu: paper and raw-data links", s1_003_page)
 
     def test_release_and_site_validators_pass(self) -> None:
         for command in (
@@ -141,6 +289,39 @@ class TestBtedV020Release(unittest.TestCase):
         ):
             result = subprocess.run(command, cwd=REPO_ROOT, text=True, capture_output=True, check=False)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_static_assemblies_json_powers_accession_search(self) -> None:
+        assemblies = json.loads((REPO_ROOT / "site/data/assemblies.json").read_text(encoding="utf-8"))
+        self.assertEqual(assemblies["release_version"], "v0.2.0")
+        self.assertEqual(len(assemblies["assemblies"]), 20)
+        pilot = assemblies["assemblies"]["GCF_000739105.1"]
+        self.assertEqual(pilot["record_count"], 2_848)
+        self.assertEqual(len(pilot["tracks"]), 2)
+        self.assertEqual(
+            [track["source_id"] for track in pilot["tracks"]],
+            ["BATTER_S1_007", "BATTER_S1_013"],
+        )
+        self.assertEqual(
+            [track["evidence_class"] for track in pilot["tracks"]],
+            ["author_called_endpoint", "author_called_endpoint"],
+        )
+        self.assertTrue(all(
+            track["track_status"] in ("signal_endpoints", "endpoints_only", "metadata_only")
+            for assembly in assemblies["assemblies"].values()
+            for track in assembly["tracks"]
+        ))
+        audit_only = next(
+            assembly for assembly in assemblies["assemblies"].values()
+            if any(track["source_id"] == "BATTER_S1_002" for track in assembly["tracks"])
+        )
+        self.assertIsNone(audit_only["jbrowse_config_url"])
+        self.assertEqual(audit_only["tracks"][0]["track_status"], "metadata_only")
+        # GitHub Pages: paths must be relative, never localhost or /api/assemblies
+        demo_js = (REPO_ROOT / "site/assets/accession-range-demo.js").read_text(encoding="utf-8")
+        self.assertNotIn("/api/assemblies", demo_js)
+        self.assertNotIn("127.0.0.1", demo_js)
+        self.assertNotIn("localhost", demo_js)
+        self.assertIn("data/assemblies.json", demo_js)
 
 
 if __name__ == "__main__":
